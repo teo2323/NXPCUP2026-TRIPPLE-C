@@ -25,8 +25,6 @@ int main(void)
     BOARD_InitBootPins();
     BOARD_InitBootPeripherals();
 
-    LED_RED_INIT(LOGIC_LED_OFF);
-
     HbridgeInit(&g_hbridge,
                 CTIMER0_PERIPHERAL,
                 CTIMER0_PWM_PERIOD_CH,
@@ -52,40 +50,35 @@ int main(void)
    volatile double steer = 0;
     while (1)
     {
-        if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
-            if (num_vectors > 0) {
-                // A black line was detected
-                LED_RED_ON();
-            } else {
-                // No lines are visible
-                LED_RED_OFF();
-            }
+    	if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
+    	        double angle = 0.0;
+    	        for (size_t i = 0; i < num_vectors; i++) {
+    	            uint16_t x0 = vectors[4*i + 0];
+    	            uint16_t y0 = vectors[4*i + 1];
+    	            uint16_t x1 = vectors[4*i + 2];
+    	            uint16_t y1 = vectors[4*i + 3];
+    	            PRINTF("  [%2u] (%u,%u)->(%u,%u)\r\n", (unsigned)i, x0, y0, x1, y1);
+    	            double m = ((double)x0-(double)x1) / ((double)y0-(double)y1);
+    	            angle += m;
+    	        }
+    	        angle *= -1;
+    	        PRINTF("Angle: %u" , angle);
+    	        if(angle > 0)
+    	        	angle *= STEERING_P_RIGHT;
+    	        else{
+    	        	angle *= STEERING_P_LEFT;
+    	        }
+    	        if (angle > STEERING_LIMIT_RIGHT){
+    	        	angle = STEERING_LIMIT_RIGHT;
+    	        }
+    	        if (angle < STEERING_LIMIT_LEFT){
+					angle = STEERING_LIMIT_LEFT;
+				}
+    	        if(num_vectors !=0)
+    	        	Steer(angle + STEERING_OFFSET);
+    	    }
 
-            // The following code for steering is commented out for now.
-            // We will use it in the next steps.
-            // double angle = 0.0;
-            // for (size_t i = 0; i < num_vectors; i++) {
-            //     uint16_t x0 = vectors[4*i + 0];
-            //     uint16_t y0 = vectors[4*i + 1];
-            //     uint16_t x1 = vectors[4*i + 2];
-            //     uint16_t y1 = vectors[4*i + 3];
-            //     PRINTF("  [%2u] (%u,%u)->(%u,%u)\r\n", (unsigned)i, x0, y0, x1, y1);
-            //     double m = ((double)x0-(double)x1) / ((double)y0-(double)y1);
-            //     angle += m;
-            // }
-            // angle *= -1;
-            // PRINTF("Angle: %u" , angle);
-            // if(angle > 0)
-            // 	angle *= STEERING_P_RIGHT;
-            // else{
-            // 	angle *= STEERING_P_LEFT;
-            // }
-            // if (angle > STEERING_LIMIT_RIGHT){ angle = STEERING_LIMIT_RIGHT; }
-            // if (angle < STEERING_LIMIT_LEFT){ angle = STEERING_LIMIT_LEFT; }
-            // if(num_vectors !=0)
-            // 	Steer(angle + STEERING_OFFSET);
-        }
-        // HbridgeSpeed(&g_hbridge, SPEED_LEFT, SPEED_RIGHT);
+        HbridgeSpeed(&g_hbridge, SPEED_LEFT, SPEED_RIGHT);
 
     }
 }
