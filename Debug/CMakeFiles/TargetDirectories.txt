@@ -1,0 +1,3 @@
+D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/Debug/CMakeFiles/nxpcup.elf.dir
+D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/Debug/CMakeFiles/edit_cache.dir
+D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/Debug/CMakeFiles/rebuild_cache.dir

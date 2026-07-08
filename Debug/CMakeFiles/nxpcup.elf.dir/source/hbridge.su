@@ -1,0 +1,4 @@
+D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/drivers/fsl_gpio.h:345:20:GPIO_PinWrite	24	static
+D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/source/hbridge.c:9:6:HbridgeInit	40	static
+D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/source/hbridge.c:30:6:HbridgeSpeed	24	static
+D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/source/hbridge.c:65:6:HbridgeBrake	16	static
