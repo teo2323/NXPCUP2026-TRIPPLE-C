@@ -1,9 +1,9 @@
-set(CMAKE_HOST_SYSTEM "Windows-6.2.9200")
+set(CMAKE_HOST_SYSTEM "Windows-10.0.26200")
 set(CMAKE_HOST_SYSTEM_NAME "Windows")
-set(CMAKE_HOST_SYSTEM_VERSION "6.2.9200")
+set(CMAKE_HOST_SYSTEM_VERSION "10.0.26200")
 set(CMAKE_HOST_SYSTEM_PROCESSOR "AMD64")
 
-include("D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/armgcc.cmake")
+include("E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/armgcc.cmake")
 
 set(CMAKE_SYSTEM "Generic")
 set(CMAKE_SYSTEM_NAME "Generic")

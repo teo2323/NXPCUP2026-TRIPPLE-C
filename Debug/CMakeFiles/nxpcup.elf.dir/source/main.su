@@ -1,1 +1,4 @@
-D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/source/main.c:19:5:main	352	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_gpio.h:345:20:GPIO_PinWrite	24	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_gpio.h:374:20:GPIO_PortSet	16	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_gpio.h:389:20:GPIO_PortClear	16	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/main.c:19:5:main	296	static

@@ -6,7 +6,7 @@
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "executable": {
-        "elf": ""
+        "elf": "${workspaceFolder}/Debug/nxpcup.elf"
       },
       "stopAtSymbol": "main",
       "probeSerialNumber": "",
@@ -18,7 +18,10 @@
         "set non-stop off"
       ],
       "gdbServerConfigs": {
-        "linkserver": {},
+        "linkserver": {
+          "device": "MCXN947:",
+          "core": "cm33_core0"
+        },
         "segger": {},
         "pemicro": {}
       },

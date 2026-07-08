@@ -1,3 +1,3 @@
-D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/source/esc.c:6:6:EscInit	24	static
-D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/source/esc.c:15:6:EscSetSpeed	56	static
-D:/Facultate/FACULTATE/an2/sem2/robotica/vsCodeWorkspace/source/esc.c:29:6:EscBrake	16	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/esc.c:6:6:EscInit	24	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/esc.c:15:6:EscSetSpeed	56	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/esc.c:29:6:EscBrake	16	static
