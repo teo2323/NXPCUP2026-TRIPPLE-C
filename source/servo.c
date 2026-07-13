@@ -12,7 +12,7 @@ void Steer(double angle)
     uint32_t periodTicks = CTIMER2_PERIPHERAL->MR[CTIMER2_PWM_PERIOD_CH];
     uint32_t pulseTicks = (uint32_t)((periodTicks * (100.0 - duty)) / 100.0);
 
-    CTIMER2_PERIPHERAL->MR[2] = pulseTicks;
+    CTIMER2_PERIPHERAL->MR[CTIMER2_PWM_3_CHANNEL] = pulseTicks;
 }
 
 void TestServo(){
@@ -28,4 +28,19 @@ void TestServo(){
 			Steer(SteerStrength);
 		}
 	}
+}
+
+void TestServoRightLeft(void)
+{
+    extern uint32_t SystemCoreClock;
+    PRINTF("Servo Test: 3 seconds to the right...\r\n");
+    Steer(50.0); /* Steer right */
+    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
+
+    PRINTF("Servo Test: 7 seconds to the left...\r\n");
+    Steer(-50.0); /* Steer left */
+    SDK_DelayAtLeastUs(7000000U, SystemCoreClock);
+
+    PRINTF("Servo Test: Centering...\r\n");
+    Steer(0.0); /* Center steering */
 }

@@ -12,7 +12,7 @@
         "ARMGCC_DIR": "$penv{USERPROFILE}/.mcuxpressotools/arm-gnu-toolchain-14.2.rel1-mingw-w64-x86_64-arm-none-eabi",
         "SdkRootDirPath": "",
         "POSTPROCESS_UTILITY": "$penv{USERPROFILE}/.mcuxpressotools/mcux-fixelf-14.2.2/mcux-fixelf.exe",
-        "MCUX_VENV_PATH": "$penv{USERPROFILE}/.mcuxpressotools/.mcux-venv-3.12/Scripts",
+        "MCUX_VENV_PATH": "C:/Users/vladc/.mcuxpressotools/.mcux-venv-3.12/Scripts",
         "PATH": "$env{MCUX_VENV_PATH}${pathListSep}$penv{PATH}",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       },

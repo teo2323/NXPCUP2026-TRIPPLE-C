@@ -8,6 +8,8 @@ E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:251:13:GP
 E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:304:13:CTIMER2_init	16	static
 E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:426:13:LP_FLEXCOMM2_init	16	static
 E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:482:13:CTIMER4_init	8	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:490:13:BOARD_InitPeripherals_CommonPostInit	8	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:506:6:BOARD_InitPeripherals	8	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:525:6:BOARD_InitBootPeripherals	8	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:547:13:LP_FLEXCOMM0_init	8	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:597:13:CTIMER3_init	16	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:609:13:BOARD_InitPeripherals_CommonPostInit	8	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:625:6:BOARD_InitPeripherals	8	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/peripherals.c:646:6:BOARD_InitBootPeripherals	8	static
