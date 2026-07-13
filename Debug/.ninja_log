@@ -76,3 +76,14 @@
 537	1142	8056521485993930	nxpcup.elf	6baf150665778c25
 6	490	8056523279198080	CMakeFiles/nxpcup.elf.dir/source/main.o	3f87f09aacbeb8c2
 491	977	8056523284043172	nxpcup.elf	6baf150665778c25
+41	684	8056548976522082	CMakeFiles/nxpcup.elf.dir/board/hardware_init.o	3ec621a7dca87fd4
+51	686	8056548976628538	CMakeFiles/nxpcup.elf.dir/board/clock_config.o	3957f86e830d8ac6
+61	688	8056548976728237	CMakeFiles/nxpcup.elf.dir/board/board.o	4d117577c662651a
+9	689	8056548976208247	CMakeFiles/nxpcup.elf.dir/board/pin_mux.o	fd1f73476b0d38ad
+72	704	8056548976832119	CMakeFiles/nxpcup.elf.dir/drivers/fsl_lpi2c_cmsis.o	5e003b4a03127d22
+25	707	8056548976369770	CMakeFiles/nxpcup.elf.dir/board/peripherals.o	478694bcc05b9c95
+84	726	8056548976953856	CMakeFiles/nxpcup.elf.dir/source/simple_movement.o	d3e813365c4e08bd
+96	741	8056548977066811	CMakeFiles/nxpcup.elf.dir/source/servo.o	38a43a6ffcf61b5a
+116	784	8056548977263135	CMakeFiles/nxpcup.elf.dir/source/pixy.o	cbac110b54350f43
+135	795	8056548977470345	CMakeFiles/nxpcup.elf.dir/source/main.o	3f87f09aacbeb8c2
+795	1246	8056548984065667	nxpcup.elf	6baf150665778c25

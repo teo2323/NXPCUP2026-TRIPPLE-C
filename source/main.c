@@ -12,74 +12,6 @@
 #include "servo.h"
 #include "esc.h"
 #include <math.h>
-#include "fsl_lpuart.h"
-#include "fsl_clock.h"
-#include "fsl_reset.h"
-
-// Define a noinit section variable for the magic word
-__attribute__((section(".noinit"))) volatile uint32_t boot_magic;
-
-#define BOOTLOADER_MAGIC_WORD 0x5A5A5A5AU
-
-static const char ota_trigger_str[] = "OTA_UPDATE_START";
-static size_t ota_trigger_idx = 0;
-
-void parse_ota_byte(uint8_t byte)
-{
-    if (byte == ota_trigger_str[ota_trigger_idx]) {
-        ota_trigger_idx++;
-        if (ota_trigger_idx == sizeof(ota_trigger_str) - 1) {
-            // Trigger detected!
-            PRINTF("OTA Trigger Detected! Rebooting into ROM bootloader...\r\n");
-            
-            // Transmit ACK
-            const char ack_str[] = "ACK_BOOTLOADER";
-            for (size_t i = 0; i < sizeof(ack_str) - 1; i++) {
-                while (!(LPUART_GetStatusFlags(LPUART3) & kLPUART_TxDataRegEmptyFlag));
-                LPUART_WriteByte(LPUART3, ack_str[i]);
-            }
-            
-            // Wait for completion of transmission
-            while (!(LPUART_GetStatusFlags(LPUART3) & kLPUART_TransmissionCompleteFlag));
-            
-            // Write magic word to SRAM
-            boot_magic = BOOTLOADER_MAGIC_WORD;
-            
-            // Execute system reset
-            NVIC_SystemReset();
-        }
-    } else {
-        if (byte == ota_trigger_str[0]) {
-            ota_trigger_idx = 1;
-        } else {
-            ota_trigger_idx = 0;
-        }
-    }
-}
-
-void LPUART3_Init(void)
-{
-    // 1. Enable clock gate for LP_FLEXCOMM3
-    CLOCK_EnableClock(kCLOCK_LPFlexComm3);
-    
-    // 2. Set clock divider for FLEXCOMM3 to 1
-    CLOCK_SetClkDiv(kCLOCK_DivFlexcom3Clk, 1U);
-    
-    // 3. Attach FRO12M clock to FLEXCOMM3
-    CLOCK_AttachClk(kFRO12M_to_FLEXCOMM3);
-    
-    // 4. Clear peripheral reset for FLEXCOMM3
-    RESET_ClearPeripheralReset(kFC3_RST_SHIFT_RSTn);
-    
-    // 5. Initialize LPUART3
-    lpuart_config_t config;
-    LPUART_GetDefaultConfig(&config);
-    config.baudRate_Bps = 115200U;
-    config.enableTx = true;
-    config.enableRx = true;
-    
-    LPUART_Init(LPUART3, &config, 12000000U);
-}
 
 #define MAX_VECTORS 10
 
@@ -118,35 +50,12 @@ void print_vector_details(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, si
 
 int main(void)
 {
-    // Check for OTA bootloader trigger
-    if (boot_magic == BOOTLOADER_MAGIC_WORD) {
-        boot_magic = 0; // Clear it to avoid infinite loop
-        
-        // Define ROM API structure
-        typedef struct {
-            const uint32_t version;
-            const char *copyright;
-            void (*runBootloader)(void *arg);
-        } bootloader_api_entry_t;
-
-        #define g_bootloaderTree (*(bootloader_api_entry_t **)0x1303FC34)
-        
-        // Disable interrupts to ensure a clean jump
-        __disable_irq();
-        
-        // Jump to bootloader
-        g_bootloaderTree->runBootloader(NULL);
-    }
-
     uint16_t vectors[MAX_VECTORS * 4];
     size_t   num_vectors;
 
     BOARD_InitHardware();
     BOARD_InitBootPins();
     BOARD_InitBootPeripherals();
-
-    // Initialize LPUART3 for ESP32 Wi-Fi update interface
-    LPUART3_Init();
 
     /* Servo Test: 3 seconds right, 7 seconds left */
     TestServoRightLeft();
@@ -176,12 +85,6 @@ int main(void)
    volatile double steer = 0;
     while (1)
     {
-        // Check for incoming data from ESP32 on LPUART3
-        if (kLPUART_RxDataRegFullFlag & LPUART_GetStatusFlags(LPUART3)) {
-            uint8_t byte = LPUART_ReadByte(LPUART3);
-            parse_ota_byte(byte);
-        }
-
     	if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
     	        double angle = 0.0;
     	        for (size_t i = 0; i < num_vectors; i++) {
