@@ -1,5 +1,0 @@
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_clock.h:1488:20:CLOCK_EnableClock	24	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_port.h:360:20:PORT_SetPinConfig	32	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_port.h:463:20:PORT_SetPinMux	24	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/pin_mux.c:39:6:BOARD_InitBootPins	8	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/board/pin_mux.c:75:6:BOARD_InitPins	24	static

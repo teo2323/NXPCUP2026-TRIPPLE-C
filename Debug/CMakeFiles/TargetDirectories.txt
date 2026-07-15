@@ -1,3 +1,0 @@
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/Debug/CMakeFiles/nxpcup.elf.dir
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/Debug/CMakeFiles/edit_cache.dir
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/Debug/CMakeFiles/rebuild_cache.dir

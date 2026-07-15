@@ -1,4 +1,0 @@
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_gpio.h:345:20:GPIO_PinWrite	24	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/hbridge.c:9:6:HbridgeInit	40	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/hbridge.c:30:6:HbridgeSpeed	24	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/hbridge.c:65:6:HbridgeBrake	16	static
