@@ -260,7 +260,7 @@ set(include_files "")
 
 target_precompile_headers(${MCUX_SDK_PROJECT_NAME} PRIVATE ${include_files})
 
-set(link_directories "")
+set(link_directories "${ProjDirPath}")
 
 
 set(link_libraries "")
