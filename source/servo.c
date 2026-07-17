@@ -11,6 +11,7 @@ void Steer(double angle)
 
     uint32_t periodTicks = CTIMER2_PERIPHERAL->MR[CTIMER2_PWM_PERIOD_CH];
     uint32_t pulseTicks = (uint32_t)((periodTicks * (100.0 - duty)) / 100.0);
+    //uint32_t pulseTicks = (uint32_t)((periodTicks * duty) / 100.0);
 
     CTIMER2_PERIPHERAL->MR[CTIMER2_PWM_3_CHANNEL] = pulseTicks;
 }

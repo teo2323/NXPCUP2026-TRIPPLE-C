@@ -16,7 +16,7 @@ void HbridgeInit(Hbridge *h,
 {
     ctimer_config_t config;
 
-    g_hbridge = *h;
+    
     h->periodChannel    = periodCh;
     h->pwm1Channel      = pwm1Ch;
     h->pwm2Channel      = pwm2Ch;
@@ -25,41 +25,33 @@ void HbridgeInit(Hbridge *h,
     h->motor2DirPort    = m2DirPort;
     h->motor2DirPin     = m2DirPin;
     h->pwmPeripheral    = pwmPeriph;
+
+    g_hbridge = *h;
 }
 
-void HbridgeSpeed(Hbridge *h, int16_t speed1, int16_t speed2)
+void HbridgeSpeed(Hbridge *h, int16_t speed)
 {
-	uint8_t duty1;
-	if (speed1 >= 0) {
-	    duty1 = (uint8_t)speed1;
-	} else {
-	    duty1 = (uint8_t)(100 + speed1);
-	}
+    uint8_t duty = (uint8_t)(speed < 0 ? -speed : speed);
+    if (duty > 100U) duty = 100U;
 
-	uint8_t duty2;
-	if (speed2 >= 0) {
-	    duty2 = (uint8_t)speed2;
-	} else {
-	    duty2 = (uint8_t)(100 + speed2);
-	}
-
-    if (duty1 > 100U) duty1 = 100U;
-    if (duty2 > 100U) duty2 = 100U;
-    if(speed2 < 0){
-    	 GPIO_PinWrite(h->motor1DirPort, h->motor1DirPin, 1U);
+    if (speed > 0) {
+        // Forward: IN1 = 1, IN2 = 0
+        GPIO_PinWrite(h->motor1DirPort, h->motor1DirPin, 1U); // IN1 (P0_27) -> HIGH
+        GPIO_PinWrite(h->motor2DirPort, h->motor2DirPin, 0U); // IN2 (P0_26) -> LOW
+    } 
+    else if (speed < 0) {
+        // Reverse: IN1 = 0, IN2 = 1
+        GPIO_PinWrite(h->motor1DirPort, h->motor1DirPin, 0U); // IN1 (P0_27) -> LOW
+        GPIO_PinWrite(h->motor2DirPort, h->motor2DirPin, 1U); // IN2 (P0_26) -> HIGH
+    } 
+    else {
+        // Brake: IN1 = 0, IN2 = 0
+        GPIO_PinWrite(h->motor1DirPort, h->motor1DirPin, 0U);
+        GPIO_PinWrite(h->motor2DirPort, h->motor2DirPin, 0U);
     }
-    else{
-    	 GPIO_PinWrite(h->motor1DirPort, h->motor1DirPin, 0U);
-    }
-    if(speed1 < 0){
-		 GPIO_PinWrite(h->motor2DirPort, h->motor2DirPin, 1U);
-	}
-	else{
-		 GPIO_PinWrite(h->motor2DirPort, h->motor2DirPin, 0U);
-	}
 
-    CTIMER_UpdatePwmDutycycle(h->pwmPeripheral,h->periodChannel , h->pwm1Channel, duty1);
-    CTIMER_UpdatePwmDutycycle(h->pwmPeripheral,h->periodChannel , h->pwm2Channel, duty2);
+    // Update ENA PWM duty cycle (assuming pwm1Channel is mapped to ENA)
+    CTIMER_UpdatePwmDutycycle(h->pwmPeripheral, h->periodChannel, h->pwm1Channel, duty);
 }
 
 void HbridgeBrake(Hbridge *h)

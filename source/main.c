@@ -54,20 +54,23 @@ int main(void)
     size_t   num_vectors;
 
     BOARD_InitHardware();
+    BOARD_InitBootClocks();
     BOARD_InitBootPins();
     BOARD_InitBootPeripherals();
 
     /* Servo Test: 3 seconds right, 7 seconds left */
     TestServoRightLeft();
 
-//    HbridgeInit(&g_hbridge,
-//                CTIMER0_PERIPHERAL,
-//                CTIMER0_PWM_PERIOD_CH,
-//                CTIMER0_PWM_1_CHANNEL,
-//                CTIMER0_PWM_2_CHANNEL,
-//                GPIO0, 24U,
-//                GPIO0, 27U);
-//    HbridgeSpeed(&g_hbridge, SPEED_LEFT, SPEED_RIGHT);
+    HbridgeInit(&g_hbridge,
+                CTIMER0_PERIPHERAL,
+                CTIMER0_PWM_PERIOD_CH,
+                CTIMER0_PWM_1_CHANNEL,
+                CTIMER0_PWM_2_CHANNEL,
+                GPIO0, 27U,
+                GPIO0, 26U);
+    //HbridgeSpeed(&g_hbridge, SPEED_LEFT, SPEED_RIGHT);
+    CTIMER_StartTimer(CTIMER0_PERIPHERAL);
+    HbridgeSpeed(&g_hbridge, 75);
 
 //    Esc esc1, esc2;
 //    EscInit(&esc1, CTIMER2_PERIPHERAL, CTIMER2_PWM_PERIOD_CH, kCTIMER_Match_1);

@@ -32,7 +32,7 @@ int main2(void)
                 CTIMER0_PWM_2_CHANNEL,
                 GPIO0, 24U,
                 GPIO0, 27U);
-    HbridgeSpeed(&g_hbridge, SPEED_LEFT, SPEED_RIGHT);
+    HbridgeSpeed(&g_hbridge, SPEED_LEFT);
 
 //    Esc esc1, esc2;
 //    EscInit(&esc1, CTIMER2_PERIPHERAL, CTIMER2_PWM_PERIOD_CH, kCTIMER_Match_1);
@@ -53,19 +53,19 @@ int main2(void)
 		}
 		if(index == 0){
 			Steer(0);
-			HbridgeSpeed(&g_hbridge, 40, 40);
+			HbridgeSpeed(&g_hbridge, 40);
 		}
 		else if(index == 1){
 			Steer(50);
-			HbridgeSpeed(&g_hbridge, 40, 40);
+			HbridgeSpeed(&g_hbridge, 40);
 		 }
 		else if(index == 2){
 			Steer(-50);
-			HbridgeSpeed(&g_hbridge, 40, 40);
+			HbridgeSpeed(&g_hbridge, 40);
 		}
 		else if(index == 3){
 			Steer(0);
-			HbridgeSpeed(&g_hbridge, -40, -40);
+			HbridgeSpeed(&g_hbridge, -40);
 		}
 	}
 
