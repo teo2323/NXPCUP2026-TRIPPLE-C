@@ -54,16 +54,16 @@ extern "C" {
 /* Timer tick period in ns (input period of the timer) */
 #define CTIMER0_TICK_PERIOD 100UL
 /* Definition of PWM period channel. */
-#define CTIMER0_PWM_PERIOD_CH kCTIMER_Match_0
+#define CTIMER0_PWM_PERIOD_CH kCTIMER_Match_3
 /* Definition of PWM period */
 #define CTIMER0_PWM_PERIOD 999
 /* Definition of channel 1 ID */
 #define CTIMER0_PWM_1_CHANNEL kCTIMER_Match_1
 /* Definition of channel 1 duty */
 #define CTIMER0_PWM_1_DUTY 1000
-/* Definition of channel 2 ID */
-#define CTIMER0_PWM_2_CHANNEL kCTIMER_Match_2
-/* Definition of channel 2 duty */
+/* Definition of channel 0 ID */
+#define CTIMER0_PWM_2_CHANNEL kCTIMER_Match_0
+/* Definition of channel 0 duty */
 #define CTIMER0_PWM_2_DUTY 950
 /* Alias for GPIO0 peripheral */
 #define GPIO0_GPIO GPIO0

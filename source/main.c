@@ -59,18 +59,30 @@ int main(void)
     BOARD_InitBootPeripherals();
 
     /* Servo Test: 3 seconds right, 7 seconds left */
-    TestServoRightLeft();
+   // TestServoRightLeft();
 
     HbridgeInit(&g_hbridge,
                 CTIMER0_PERIPHERAL,
                 CTIMER0_PWM_PERIOD_CH,
-                CTIMER0_PWM_1_CHANNEL,
-                CTIMER0_PWM_2_CHANNEL,
-                GPIO0, 27U,
-                GPIO0, 26U);
-    //HbridgeSpeed(&g_hbridge, SPEED_LEFT, SPEED_RIGHT);
+                CTIMER0_PWM_1_CHANNEL, // ENA (P0_25)
+                CTIMER0_PWM_2_CHANNEL, // ENB (P0_24)
+                GPIO0, 27U,            // IN1 (P0_27)
+                GPIO0, 26U,            // IN2 (P0_26)
+                GPIO0, 28U,            // IN3 (P0_28)
+                GPIO0, 31U             // IN4 (P0_31)
+    );
+    extern uint32_t SystemCoreClock;
+
     CTIMER_StartTimer(CTIMER0_PERIPHERAL);
-    HbridgeSpeed(&g_hbridge, 75);
+
+    /* 1. Motoarele pornesc 10 secunde la 75% viteza */
+    PRINTF("Motoarele pornesc pentru 10 secunde...\r\n");
+    HbridgeSpeed(&g_hbridge, 75, 75);
+    SDK_DelayAtLeastUs(10000000U, SystemCoreClock); // Wait 10 secunde (10.000.000 us)
+
+    
+    HbridgeBrake(&g_hbridge);
+    
 
 //    Esc esc1, esc2;
 //    EscInit(&esc1, CTIMER2_PERIPHERAL, CTIMER2_PWM_PERIOD_CH, kCTIMER_Match_1);

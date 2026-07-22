@@ -170,7 +170,7 @@ instance:
       - timerPrescaler: '15'
     - EnableTimerInInit: 'true'
     - pwmConfig:
-      - pwmPeriodChannel: 'kCTIMER_Match_0'
+      - pwmPeriodChannel: 'kCTIMER_Match_3'
       - pwmPeriodValueStr: '10khz'
       - enableInterrupt: 'false'
       - pwmChannels:
@@ -181,7 +181,7 @@ instance:
           - enableInterrupt: 'false'
         - 1:
           - pwmChannelPrefixId: 'PWM_2'
-          - pwmChannel: 'kCTIMER_Match_2'
+          - pwmChannel: 'kCTIMER_Match_0'
           - pwmDutyValueStr: '50'
           - enableInterrupt: 'false'
     - interruptCallbackConfig:
@@ -203,7 +203,7 @@ static void CTIMER0_init(void) {
   CTIMER_Init(CTIMER0_PERIPHERAL, &CTIMER0_config);
   /* PWM channel 1 of CTIMER0 peripheral initialization */
   CTIMER_SetupPwmPeriod(CTIMER0_PERIPHERAL, CTIMER0_PWM_PERIOD_CH, CTIMER0_PWM_1_CHANNEL, CTIMER0_PWM_PERIOD, CTIMER0_PWM_1_DUTY, false);
-  /* PWM channel 2 of CTIMER0 peripheral initialization */
+  /* PWM channel 0 of CTIMER0 peripheral initialization */
   CTIMER_SetupPwmPeriod(CTIMER0_PERIPHERAL, CTIMER0_PWM_PERIOD_CH, CTIMER0_PWM_2_CHANNEL, CTIMER0_PWM_PERIOD, CTIMER0_PWM_2_DUTY, false);
   /* Start the timer */
   CTIMER_StartTimer(CTIMER0_PERIPHERAL);
