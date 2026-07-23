@@ -53,7 +53,7 @@ int main(void)
     uint16_t vectors[MAX_VECTORS * 4];
     size_t   num_vectors;
 
-    BOARD_InitHardware();
+     BOARD_InitHardware();
     BOARD_InitBootClocks();
     BOARD_InitBootPins();
     BOARD_InitBootPeripherals();
@@ -76,12 +76,12 @@ int main(void)
     CTIMER_StartTimer(CTIMER0_PERIPHERAL);
 
     /* 1. Motoarele pornesc 10 secunde la 75% viteza */
-    PRINTF("Motoarele pornesc pentru 10 secunde...\r\n");
-    HbridgeSpeed(&g_hbridge, 75, 75);
-    SDK_DelayAtLeastUs(10000000U, SystemCoreClock); // Wait 10 secunde (10.000.000 us)
+    //PRINTF("Motoarele pornesc pentru 10 secunde...\r\n");
+    //HbridgeSpeed(&g_hbridge, 75, 75);
+    //SDK_DelayAtLeastUs(10000000U, SystemCoreClock); // Wait 10 secunde (10.000.000 us)
 
     
-    HbridgeBrake(&g_hbridge);
+   // HbridgeBrake(&g_hbridge);
     
 
 //    Esc esc1, esc2;
@@ -97,30 +97,43 @@ int main(void)
     pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
     pixy_set_led(&cam1, 255, 0, 0);
 
-   volatile double steer = 0;
+    // Center steering servo at startup
+    Steer(0.0 + STEERING_OFFSET);
+
+    volatile double steer = 0;
     while (1)
     {
     	if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
     	        double angle = 0.0;
+    	        size_t valid_count = 0;
+
     	        for (size_t i = 0; i < num_vectors; i++) {
     	            uint16_t x0 = vectors[4*i + 0];
     	            uint16_t y0 = vectors[4*i + 1];
     	            uint16_t x1 = vectors[4*i + 2];
     	            uint16_t y1 = vectors[4*i + 3];
 
+    	            double diff_y = (double)y0 - (double)y1;
+
+    	            // Ignore horizontal or near-horizontal vectors (must have at least 8px vertical height)
+    	            if (fabs(diff_y) < 8.0) {
+    	                continue;
+    	            }
+
     	            // Print vector details
     	            print_vector_details(x0, y0, x1, y1, i);
 
-    	            // Calculate slope, protecting against division by zero
-    	            double diff_y = (double)y0 - (double)y1;
-    	            if (diff_y != 0.0) {
-    	                double m = ((double)x0 - (double)x1) / diff_y;
-    	                angle += m;
-    	            } else {
-    	                // If dy is zero, slope is infinite. Assign a large value based on direction of dx
-    	                angle += ((double)x0 - (double)x1 >= 0) ? 999.0 : -999.0;
-    	            }
+    	            // Calculate inverse slope m = dx / dy
+    	            double m = ((double)x0 - (double)x1) / diff_y;
+    	            angle += m;
+    	            valid_count++;
     	        }
+
+    	        // Average slope across valid vectors to prevent spurious/extra lines from distorting steering
+    	        if (valid_count > 0) {
+    	            angle /= (double)valid_count;
+    	        }
+
     	        angle *= -1;
 
     	        // Safe print representation of double (since %f is not enabled)
