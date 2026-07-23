@@ -3,7 +3,8 @@
 #include "fsl_lpi2c_edma.h"
 #include <stdbool.h>
 
-static volatile bool transferDone;
+static volatile bool     transferDone;
+static volatile status_t transferStatus;
 
 static void pixy_edma_cb(LPI2C_Type *base,
                          lpi2c_master_edma_handle_t *handle,
@@ -11,9 +12,8 @@ static void pixy_edma_cb(LPI2C_Type *base,
                          void *userData)
 {
     (void)base; (void)handle; (void)userData;
-    if (status == kStatus_Success) {
-        transferDone = true;
-    }
+    transferStatus = status;
+    transferDone   = true;
 }
 
 void pixy_init(pixy_t *cam,
@@ -35,7 +35,8 @@ void pixy_init(pixy_t *cam,
 
 static status_t pixy_send(pixy_t *cam, const uint8_t *cmd, size_t len)
 {
-    transferDone = false;
+    transferDone   = false;
+    transferStatus = kStatus_Success;
     lpi2c_master_transfer_t xfer = {
         .slaveAddress   = cam->address,
         .direction      = kLPI2C_Write,
@@ -47,12 +48,13 @@ static status_t pixy_send(pixy_t *cam, const uint8_t *cmd, size_t len)
     status_t s = LPI2C_MasterTransferEDMA(cam->instance, &cam->edmaHandle, &xfer);
     if (s != kStatus_Success) return s;
     while (!transferDone) {}
-    return kStatus_Success;
+    return transferStatus;
 }
 
 static status_t pixy_recv(pixy_t *cam, uint8_t *buf, size_t len)
 {
-    transferDone = false;
+    transferDone   = false;
+    transferStatus = kStatus_Success;
     lpi2c_master_transfer_t xfer = {
         .slaveAddress   = cam->address,
         .direction      = kLPI2C_Read,
@@ -64,7 +66,7 @@ static status_t pixy_recv(pixy_t *cam, uint8_t *buf, size_t len)
     status_t s = LPI2C_MasterTransferEDMA(cam->instance, &cam->edmaHandle, &xfer);
     if (s != kStatus_Success) return s;
     while (!transferDone) {}
-    return kStatus_Success;
+    return transferStatus;
 }
 
 status_t pixy_set_led(pixy_t *cam, uint8_t r, uint8_t g, uint8_t b)
