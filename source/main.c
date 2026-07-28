@@ -97,14 +97,20 @@ int main(void)
     pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
     pixy_set_led(&cam1, 255, 0, 0);
 
-    // Center steering servo at startup
-    //Steer(0.0);
-   // SDK_DelayAtLeastUs(1000000U, SystemCoreClock);
-    Steer(10.0);
-   // SDK_DelayAtLeastUs(3000000U, SystemCoreClock); // Wait 3 secunde (3.000.000 us)
-    Steer(-10.0);
-   // SDK_DelayAtLeastUs(3000000U, SystemCoreClock); // Wait 3 secunde (3.000.000 us)
-   // Steer(0.0);
+
+    /* Start motors before test sequence so movement and steering happen concurrently */
+    HbridgeSpeed(&g_hbridge, 100, 100);
+
+    Steer(0.0);
+    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
+    Steer(25.0);
+    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
+    Steer(0.0);
+    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
+    Steer(-25.0);
+    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
+    Steer(0.0);
+
 
     volatile double steer = 0;
     while (1)
@@ -164,14 +170,15 @@ int main(void)
     	        if (angle < STEERING_LIMIT_LEFT){
 					angle = STEERING_LIMIT_LEFT;
 				}
-                //testing the servo
-    	        //if(num_vectors !=0)
-    	        	//Steer(angle + STEERING_OFFSET);
+
+    	        //if (valid_count > 0) {
+    	        //	Steer(angle + STEERING_OFFSET);
+    	        //}
     	    }
             
 
 
-       //HbridgeSpeed(&g_hbridge, 100,100);
+       //HbridgeSpeed(&g_hbridge, 75, 75);
 
     }
 }
