@@ -2,7 +2,7 @@
 #include "peripherals.h"
 #include "fsl_debug_console.h"
 
-#define SERVO_OFFSET 15.0
+#define SERVO_OFFSET 5.0
 
 void Steer(double angle)
 {
@@ -25,7 +25,7 @@ void TestServo(){
 	volatile int Delay;
 	volatile int SteerStrength;
 	while(1){
-		for(SteerStrength = -100; SteerStrength <=100; SteerStrength++){
+		for(SteerStrength = -45; SteerStrength <=45; SteerStrength++){
 			Delay = 200000;
 			while(Delay){
 				Delay--;
@@ -36,16 +36,16 @@ void TestServo(){
 	}
 }
 
-void TestServoRightLeft(void)
+void TestServoRightLeft()
 {
     extern uint32_t SystemCoreClock;
     PRINTF("Servo Test: 3 seconds to the right...\r\n");
-    Steer(50.0); /* Steer right */
+    Steer(30.0); /* Steer right */
     SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
 
     PRINTF("Servo Test: 7 seconds to the left...\r\n");
-    Steer(-50.0); /* Steer left */
-    SDK_DelayAtLeastUs(7000000U, SystemCoreClock);
+    Steer(-30.0); /* Steer left */
+    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
 
     PRINTF("Servo Test: Centering...\r\n");
     Steer(0.0); /* Center steering */

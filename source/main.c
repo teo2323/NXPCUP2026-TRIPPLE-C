@@ -11,41 +11,67 @@
 #include "Config.h"
 #include "servo.h"
 #include "esc.h"
+#include "detection.h"
 #include <math.h>
 
-#define MAX_VECTORS 10
+#define MAX_VECTORS          10
+#define AUTOMATED_BASE_SPEED 40
 
-void print_vector_details(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, size_t index)
+
+#define RX_BUF_SIZE 128
+volatile char rx_buf[RX_BUF_SIZE];
+volatile uint8_t rx_idx = 0;
+volatile bool rx_complete = false;
+
+void Process_LPUART_Rx(void)
+
 {
-    int dx = (int)x1 - (int)x0;
-    int dy = (int)y1 - (int)y0;
+    uint32_t flags = LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL);
 
-    // Calculate vector length (magnitude)
-    double length = sqrt((double)(dx * dx + dy * dy));
-
-    // Calculate direction angle in degrees relative to the vertical axis (-dy).
-    // Straight forward is 0 degrees. Left is negative, right is positive.
-    double angle_deg = 0.0;
-    if (dy != 0) {
-        angle_deg = atan2((double)dx, (double)(-dy)) * 180.0 / 3.141592653589793;
-    } else {
-        angle_deg = (dx >= 0) ? 90.0 : -90.0;
+    // 1. Curățare erori de linie LPUART
+    if (flags & (kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag | kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag))
+    {
+        LPUART_ClearStatusFlags(LP_FLEXCOMM3_PERIPHERAL,
+                                kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag |
+                                kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag);
     }
 
-    // Split into integer and fractional parts for printing (avoiding %f format)
-    int len_int = (int)length;
-    int len_frac = (int)((length - len_int) * 100.0);
-    if (len_frac < 0) len_frac = -len_frac;
+    // 2. Citire caractere din buffer-ul hardware
+    while (LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL) & kLPUART_RxDataRegFullFlag)
+    {
+        char c = (char)LPUART_ReadByte(LP_FLEXCOMM3_PERIPHERAL);
 
-    int ang_int = (int)angle_deg;
-    int ang_frac = (int)((angle_deg - (double)ang_int) * 100.0);
-    if (ang_frac < 0) ang_frac = -ang_frac;
+        if (c == ';' || c == '\n' || c == '\r') 
+        {
+            if (rx_idx > 0U) 
+            {
+                rx_buf[rx_idx] = '\0';
+                rx_complete = true; // Semnalăm că avem un mesaj complet
+                rx_idx = 0U;
+            }
+        } 
+        else if ((uint8_t)c >= 32U && rx_idx < (uint8_t)(sizeof(rx_buf) - 1U)) 
+        {
+            rx_buf[rx_idx++] = c;
+        }
+    }
+}
 
-    PRINTF("Vector [%u] details:\r\n", (unsigned)index);
-    PRINTF("  Start: (%u, %u) -> End: (%u, %u)\r\n", (unsigned)x0, (unsigned)y0, (unsigned)x1, (unsigned)y1);
-    PRINTF("  dx: %d, dy: %d\r\n", dx, dy);
-    PRINTF("  Length: %d.%02d px\r\n", len_int, len_frac);
-    PRINTF("  Angle: %d.%02d deg\r\n", ang_int, ang_frac);
+void LPUART_SendChar(char c)
+{
+    // Așteaptă până când registrul de transmisie este liber
+    while (!(LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL) & kLPUART_TxDataRegEmptyFlag))
+    {
+    }
+    LPUART_WriteByte(LP_FLEXCOMM3_PERIPHERAL, (uint8_t)c);
+}
+
+void LPUART_SendString(const char *str)
+{
+    while (*str)
+    {
+        LPUART_SendChar(*str++);
+    }
 }
 
 int main(void)
@@ -53,13 +79,10 @@ int main(void)
     uint16_t vectors[MAX_VECTORS * 4];
     size_t   num_vectors;
 
-     BOARD_InitHardware();
+    BOARD_InitHardware();
     BOARD_InitBootClocks();
     BOARD_InitBootPins();
     BOARD_InitBootPeripherals();
-
-    /* Servo Test: 3 seconds right, 7 seconds left */
-   // TestServoRightLeft();
 
     HbridgeInit(&g_hbridge,
                 CTIMER0_PERIPHERAL,
@@ -75,110 +98,146 @@ int main(void)
 
     CTIMER_StartTimer(CTIMER0_PERIPHERAL);
 
-    /* 1. Motoarele pornesc 10 secunde la 75% viteza */
-    //PRINTF("Motoarele pornesc pentru 10 secunde...\r\n");
-    //HbridgeSpeed(&g_hbridge, 75, 75);
-    //SDK_DelayAtLeastUs(10000000U, SystemCoreClock); // Wait 10 secunde (10.000.000 us)
-
-    
-   // HbridgeBrake(&g_hbridge);
-    
-
-//    Esc esc1, esc2;
-//    EscInit(&esc1, CTIMER2_PERIPHERAL, CTIMER2_PWM_PERIOD_CH, kCTIMER_Match_1);
-//    EscInit(&esc2, CTIMER2_PERIPHERAL, CTIMER2_PWM_PERIOD_CH, kCTIMER_Match_3);
-//    EscSetSpeed(&esc1, 79.0);
-//    EscBrake(&esc1);
-//    EscSetSpeed(&esc2, 59.0);
-//    EscBrake(&esc2);
-
-//    TestServo();
     pixy_t cam1;
     pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
-    pixy_set_led(&cam1, 255, 0, 0);
+    pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active automated mode
 
-
-    /* Start motors before test sequence so movement and steering happen concurrently */
-    HbridgeSpeed(&g_hbridge, 100, 100);
-
+    /* 1. Continuous H-bridge drive speed */
+    HbridgeSpeed(&g_hbridge, 70, 70);
     Steer(0.0);
-    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
-    Steer(25.0);
-    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
-    Steer(0.0);
-    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
-    Steer(-25.0);
-    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
-    Steer(0.0);
+    //TestServo();
+
+    double last_steering_angle = 0.0;
+    double previous_error      = 0.0;  // D term: stores last frame's angle
 
 
-    volatile double steer = 0;
+    LPUART_SendString("AT\r\n");
     while (1)
     {
-    	if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
-    	        double angle = 0.0;
-    	        size_t valid_count = 0;
+        Process_LPUART_Rx();
+        if (rx_complete) {
+            printf("Received message: %s\n", rx_buf);
+            rx_complete = false;
+        }
+        /* Maintain continuous motor speed rate */
+        HbridgeSpeed(&g_hbridge, 70, 70);
 
-    	        for (size_t i = 0; i < num_vectors; i++) {
-    	            uint16_t x0 = vectors[4*i + 0];
-    	            uint16_t y0 = vectors[4*i + 1];
-    	            uint16_t x1 = vectors[4*i + 2];
-    	            uint16_t y1 = vectors[4*i + 3];
+        if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
+            dual_line_detection_result_t det;
+            detection_process_dual_lines(vectors, num_vectors, &det);
 
-    	            double diff_y = (double)y0 - (double)y1;
+            /* Print per-frame vector categorization over serial:
+             * Shows how each raw vector is classified as VERTICAL LEFT/RIGHT,
+             * HORIZONTAL TURN, or REJECTED by the detection pipeline. */
+            // detection_debug_vectors(vectors, num_vectors);
 
-    	            // Ignore horizontal or near-horizontal vectors (must have at least 8px vertical height)
-    	            if (fabs(diff_y) < 8.0) {
-    	                continue;
-    	            }
+            if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present)) {
+                double raw_steering_angle = 0.0;
 
-    	            // Print vector details
-    	            print_vector_details(x0, y0, x1, y1, i);
+                if (det.both_lines_present) {
+                    /* Case 1: 2 Track lines detected -> keep same logic for steering */
+                    double error = det.steering_angle;
 
-    	            // Calculate inverse slope m = dx / dy
-    	            double m = ((double)x0 - (double)x1) / diff_y;
-    	            angle += m;
-    	            valid_count++;
-    	        }
+                    /* D term: calculat din eroarea bruta (inainte de P) */
+                    double derivative = error - previous_error;
+                    previous_error    = error;
 
-    	        // Average slope across valid vectors to prevent spurious/extra lines from distorting steering
-    	        if (valid_count > 0) {
-    	            angle /= (double)valid_count;
-    	        }
+                    /* P + D combinate: output = P*error + D*derivative */
+                    double p_term = (error > 0) ? (STEERING_P_RIGHT * error) : (STEERING_P_LEFT * error);
+                    double d_term = (derivative > 0) ? (STEERING_D_RIGHT * derivative) : (STEERING_D_LEFT * derivative);
+                    double steer_angle = p_term + d_term;
 
-    	        angle *= -1;
+                    if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
+                    if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
 
-    	        // Safe print representation of double (since %f is not enabled)
-    	        if (angle < 0) {
-    	            int ang_int = (int)(-angle);
-    	            int ang_frac = (int)((-angle - ang_int) * 100.0);
-    	            PRINTF("Calculated Steering Angle: -%d.%02d\r\n", ang_int, ang_frac);
-    	        } else {
-    	            int ang_int = (int)angle;
-    	            int ang_frac = (int)((angle - ang_int) * 100.0);
-    	            PRINTF("Calculated Steering Angle: %d.%02d\r\n", ang_int, ang_frac);
-    	        }
+                    Steer(steer_angle);
+                    last_steering_angle = steer_angle;
 
-    	        if(angle > 0)
-    	        	angle *= STEERING_P_RIGHT;
-    	        else{
-    	        	angle *= STEERING_P_LEFT;
-    	        }
-    	        if (angle > STEERING_LIMIT_RIGHT){
-    	        	angle = STEERING_LIMIT_RIGHT;
-    	        }
-    	        if (angle < STEERING_LIMIT_LEFT){
-					angle = STEERING_LIMIT_LEFT;
-				}
+                    PRINTF("Vede ambii vectori\n");
+                }
+                else {
+                    /* Single line detected case (lines 76-87 commented out):
+                    else if (det.left_line_present && !det.right_line_present) {
+                        // Case 2: Only LEFT track line detected -> find center by adding 25px
+                        double track_center_x = det.left_line.bottom_x + 25.0;
+                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
+                        raw_steering_angle    = (-1.0 * det.left_line.inverse_slope) + (center_offset * 0.25);
+                    }
+                    else if (!det.left_line_present && det.right_line_present) {
+                        // Case 3: Only RIGHT track line detected -> find center by removing 25px
+                        double track_center_x = det.right_line.bottom_x - 25.0;
+                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
+                        raw_steering_angle    = (-1.0 * det.right_line.inverse_slope) + (center_offset * 0.25);
+                    }
+                    */
 
-    	        //if (valid_count > 0) {
-    	        //	Steer(angle + STEERING_OFFSET);
-    	        //}
-    	    }
-            
+                    /* Find slope of the visible track line */
+                    const line_track_t *visible_line = det.left_line_present ? &det.left_line : &det.right_line;
 
+                    double slope = visible_line->inverse_slope;
 
-       //HbridgeSpeed(&g_hbridge, 75, 75);
+                    int slope_x100 = (int)(slope * 100.0);
+                    int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
 
+                    if (det.left_line_present) {
+                        PRINTF("Linia stanga prezenta!\r\n");
+                    } else {
+                        PRINTF("Linia dreapta prezenta!\r\n");
+                    }
+
+                    if (slope < 0 && slope_x100 / 100 == 0) {
+                        PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
+                    } else {
+                        PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
+                    }
+
+                    
+                        double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT : (double)STEERING_LIMIT_RIGHT;
+                        Steer(steer_angle);
+                        last_steering_angle = steer_angle;
+                    
+                }
+            }
+            else {
+                /* 0 track lines detected -> search for horizontal turn-track vector */
+                turn_track_result_t turn;
+                if (detection_detect_turn_track(vectors, num_vectors, &turn)) {
+                    /* A horizontal vector found: steer proportionally toward the turn */
+                    double error = turn.steering_angle;
+
+                    /* D term: calculat din eroarea bruta (inainte de P) */
+                    double derivative = error - previous_error;
+                    previous_error    = error;
+
+                    /* P + D combinate: output = P*error + D*derivative */
+                    double p_term = (error > 0) ? (STEERING_P_RIGHT * error) : (STEERING_P_LEFT * error);
+                    double d_term = (derivative > 0) ? (STEERING_D_RIGHT * derivative) : (STEERING_D_LEFT * derivative);
+                    double steer_angle = p_term + d_term;
+
+                    if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
+                    if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
+
+                    Steer(steer_angle);
+                    last_steering_angle = steer_angle;
+
+                    // PRINTF("[Turn] Horizontal vector detected | center_x: %d | dir: %s | Steer: %d deg\r\n",
+                           //(int)turn.center_x, turn.turn_left ? "LEFT" : "RIGHT", (int)steer_angle);
+
+                    PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
+                }
+                else {
+                    /* No horizontal vector either -> gently decay angle toward straight */
+                    last_steering_angle *= 0.8;
+                    if (fabs(last_steering_angle) < 1.0) {
+                        last_steering_angle = 0.0;
+                    }
+                    Steer(last_steering_angle);
+
+                    PRINTF("Nu am gasit niciun vector, ma pis pe ea de detectie\r\n");
+
+                    // PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
+                }
+            }
+        }
     }
 }

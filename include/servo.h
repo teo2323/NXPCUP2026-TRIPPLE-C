@@ -7,7 +7,7 @@ extern "C" {
 
 void Steer(double angle);
 void TestServo();
-void TestServoRightLeft(void);
+void TestServoRightLeft();
 
 #ifdef __cplusplus
 }
