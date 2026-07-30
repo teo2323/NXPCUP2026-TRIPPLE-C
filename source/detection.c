@@ -184,10 +184,9 @@ void detection_classify_left_right(const pixy_vector_t *vectors,
     if (right_count) *right_count = r_cnt;
 }
 
-bool detection_extract_line_track(const pixy_vector_t *vectors,
-                                  size_t count,
-                                  line_side_t side,
-                                  line_track_t *line)
+bool detection_extract_left_line_track(const pixy_vector_t *vectors,
+                                       size_t count,
+                                       line_track_t *line)
 {
     if (line == NULL) return false;
 
@@ -207,15 +206,8 @@ bool detection_extract_line_track(const pixy_vector_t *vectors,
     for (size_t i = 0; i < count; i++) {
         double bot_x = get_vector_bottom_x(&vectors[i]);
 
-        /* Score vector: base weight on bottom X coordinate (without considering vector length) */
+        /* Score left line vector: higher bottom X is closer to frame center (inner left boundary) */
         double score = bot_x;
-
-        /* Apply side preference weighting if side is explicitly specified */
-        if (side == LINE_SIDE_LEFT && bot_x < PIXY_FRAME_CENTER_X) {
-            score *= 1.2;
-        } else if (side == LINE_SIDE_RIGHT && bot_x >= PIXY_FRAME_CENTER_X) {
-            score *= 1.2;
-        }
 
         if (score > max_score) {
             max_score = score;
@@ -241,6 +233,69 @@ bool detection_extract_line_track(const pixy_vector_t *vectors,
     }
 
     return true;
+}
+
+bool detection_extract_right_line_track(const pixy_vector_t *vectors,
+                                        size_t count,
+                                        line_track_t *line)
+{
+    if (line == NULL) return false;
+
+    if (vectors == NULL || count == 0) {
+        line->detected      = false;
+        line->angle_deg     = 0.0;
+        line->inverse_slope = 0.0;
+        line->bottom_x      = 0.0;
+        line->top_x         = 0.0;
+        line->length        = 0.0;
+        return false;
+    }
+
+    size_t best_idx  = 0;
+    double max_score = -1.0;
+
+    for (size_t i = 0; i < count; i++) {
+        double bot_x = get_vector_bottom_x(&vectors[i]);
+
+        /* Score right line vector: lower bottom X is closer to frame center (inner right boundary) */
+        double score = (double)PIXY_FRAME_WIDTH - bot_x;
+
+        if (score > max_score) {
+            max_score = score;
+            best_idx  = i;
+        }
+    }
+
+    const pixy_vector_t *best_vec = &vectors[best_idx];
+    double len = detection_vector_length(best_vec);
+
+    line->vector        = *best_vec;
+    line->detected      = true;
+    line->length        = len;
+    line->angle_deg     = detection_vector_angle_deg(best_vec);
+    line->inverse_slope = detection_vector_inverse_slope(best_vec);
+
+    if (best_vec->y0 >= best_vec->y1) {
+        line->bottom_x = (double)best_vec->x0;
+        line->top_x    = (double)best_vec->x1;
+    } else {
+        line->bottom_x = (double)best_vec->x1;
+        line->top_x    = (double)best_vec->x0;
+    }
+
+    return true;
+}
+
+bool detection_extract_line_track(const pixy_vector_t *vectors,
+                                  size_t count,
+                                  line_side_t side,
+                                  line_track_t *line)
+{
+    if (side == LINE_SIDE_RIGHT) {
+        return detection_extract_right_line_track(vectors, count, line);
+    } else {
+        return detection_extract_left_line_track(vectors, count, line);
+    }
 }
 
 bool detection_find_primary_vector(const pixy_vector_t *vectors,
@@ -410,32 +465,30 @@ void detection_calculate_dual_line_steering(const line_track_t *left,
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
         result->avg_slope      = (left->inverse_slope + right->inverse_slope) / 2.0;
 
-        /* Combined steering angle = slope heading + offset correction */
-        result->steering_angle = -1.0 * (result->avg_slope + (result->center_offset * 0.05));
+        /* Combined steering angle = inverse slope heading + center offset correction */
+        result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
     }
     else if (!has_left && has_right) {
         /* CASE 2: Left line is MISSING (only Right line detected).
-         * Steer LEFT (negative angle) in the direction of the missing left line until it reappears. */
+         * Estimate virtual track center: track_center = right_x - half_track_width */
         result->track_center_x = right->bottom_x - half_track_width;
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = right->inverse_slope;
 
-        /* Negative slope/steering value forces steering LEFT towards missing line */
-        double recover_steer   = (right->inverse_slope < -0.2) ? right->inverse_slope : -0.6;
-        result->steering_angle = recover_steer;
+        /* Proportional steering angle from virtual centerline offset and line slope */
+        result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
     }
     else if (has_left && !has_right) {
         /* CASE 3: Right line is MISSING (only Left line detected).
-         * Steer RIGHT (positive angle) in the direction of the missing right line until it reappears. */
+         * Estimate virtual track center: track_center = left_x + half_track_width */
         result->track_center_x = left->bottom_x + half_track_width;
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = left->inverse_slope;
 
-        /* Positive slope/steering value forces steering RIGHT towards missing line */
-        double recover_steer   = (left->inverse_slope > 0.2) ? left->inverse_slope : 0.6;
-        result->steering_angle = recover_steer;
+        /* Proportional steering angle from virtual centerline offset and line slope */
+        result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
     }
     else {
         /* CASE 4: Neither line detected */
@@ -485,8 +538,8 @@ void detection_process_dual_lines(const uint16_t *raw_vectors,
                                   right_vecs, &right_cnt);
 
     line_track_t left_line, right_line;
-    detection_extract_line_track(left_vecs, left_cnt, LINE_SIDE_LEFT, &left_line);
-    detection_extract_line_track(right_vecs, right_cnt, LINE_SIDE_RIGHT, &right_line);
+    detection_extract_left_line_track(left_vecs, left_cnt, &left_line);
+    detection_extract_right_line_track(right_vecs, right_cnt, &right_line);
 
     detection_calculate_dual_line_steering(&left_line, &right_line,
                                             DUAL_LINE_HALF_TRACK_DEFAULT,

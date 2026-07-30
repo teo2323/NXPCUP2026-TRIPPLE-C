@@ -46,7 +46,7 @@ int main(void)
     pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active automated mode
 
     /* 1. Continuous H-bridge drive speed */
-    HbridgeSpeed(&g_hbridge, 70, 70);
+    //HbridgeSpeed(&g_hbridge, 70, 70);
     Steer(0.0);
 
     double last_steering_angle = 0.0;
@@ -60,48 +60,48 @@ int main(void)
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
 
-            if (det.valid_vectors > 0) {
+            // PRINTF("[Pixy Camera] Detected Vectors Count: Raw = %u, Valid = %u\r\n",
+                   //(unsigned)num_vectors, (unsigned)det.valid_vectors);
+
+            if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present)) {
+                /* Use virtual centerline steering computed by detection_process_dual_lines */
+                double steer_angle = det.steering_angle;
+
+                if (steer_angle > 0) steer_angle *= STEERING_P_RIGHT;
+                else steer_angle *= STEERING_P_LEFT;
+
+                if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
+                if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
+
+                Steer(steer_angle);
+                last_steering_angle = steer_angle;
+
+                int ang_int = (int)steer_angle;
+
                 if (det.both_lines_present) {
-                    /* BOTH lines detected -> Track midpoint & centerline steer */
-                    double steer_angle = det.steering_angle;
-
-                    if (steer_angle > 0) steer_angle *= STEERING_P_RIGHT;
-                    else steer_angle *= STEERING_P_LEFT;
-
-                    if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
-                    if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
-
-                    Steer(steer_angle);
-                    last_steering_angle = steer_angle;
-
-                    int ang_int = (int)steer_angle;
-                    // PRINTF("BOTH lines detected -> Center Steer: %d deg\r\n", ang_int);
+                    // PRINTF("[Detection] 2 Track Lines (BOTH) | Raw: %u, Valid: %u | Steer: %d deg\r\n",
+                           //(unsigned)num_vectors, (unsigned)det.valid_vectors, ang_int);
                 }
                 else if (!det.left_line_present && det.right_line_present) {
-                    /* LEFT line MISSING -> Steer LEFT in direction of missing line until track reappears */
-                    double steer_angle = (double)STEERING_LIMIT_LEFT;
-                    Steer(steer_angle);
-                    last_steering_angle = steer_angle;
-
-                    int ang_int = (int)steer_angle;
-                    // PRINTF("LEFT line missing -> Steering LEFT (%d deg) until track reappears...\r\n", ang_int);
+                    // PRINTF("[Detection] 1 Track Line (RIGHT only) | Raw: %u, Valid: %u | Virtual Center Steer: %d deg\r\n",
+                           //(unsigned)num_vectors, (unsigned)det.valid_vectors, ang_int);
                 }
                 else if (det.left_line_present && !det.right_line_present) {
-                    /* RIGHT line MISSING -> Steer RIGHT in direction of missing line until track reappears */
-                    double steer_angle = (double)STEERING_LIMIT_RIGHT;
-                    Steer(steer_angle);
-                    last_steering_angle = steer_angle;
-
-                    int ang_int = (int)steer_angle;
-                    // PRINTF("RIGHT line missing -> Steering RIGHT (%d deg) until track reappears...\r\n", ang_int);
+                    // PRINTF("[Detection] 1 Track Line (LEFT only) | Raw: %u, Valid: %u | Virtual Center Steer: %d deg\r\n",
+                           //(unsigned)num_vectors, (unsigned)det.valid_vectors, ang_int);
                 }
             }
             else {
-                /* NEITHER line detected -> Maintain steering search direction until track reappears */
+                /* 0 lines detected -> Gently decay search angle toward 0° straight to prevent lockup */
+                last_steering_angle *= 0.8;
+                if (fabs(last_steering_angle) < 1.0) {
+                    last_steering_angle = 0.0;
+                }
                 Steer(last_steering_angle);
 
                 int ang_int = (int)last_steering_angle;
-                // PRINTF("NO lines detected -> Maintaining search angle (%d deg)...\r\n", ang_int);
+                // PRINTF("[Detection] 0 Track Lines | Raw: %u, Valid: %u | Decaying search angle: %d deg\r\n",
+                       //(unsigned)num_vectors, (unsigned)det.valid_vectors, ang_int);
             }
         }
     }

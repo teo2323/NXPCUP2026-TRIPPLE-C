@@ -129,6 +129,14 @@ void detection_classify_left_right(const pixy_vector_t *vectors,
                                    pixy_vector_t *right_vecs,
                                    size_t *right_count);
 
+bool detection_extract_left_line_track(const pixy_vector_t *vectors,
+                                       size_t count,
+                                       line_track_t *line);
+
+bool detection_extract_right_line_track(const pixy_vector_t *vectors,
+                                        size_t count,
+                                        line_track_t *line);
+
 bool detection_extract_line_track(const pixy_vector_t *vectors,
                                   size_t count,
                                   line_side_t side,
