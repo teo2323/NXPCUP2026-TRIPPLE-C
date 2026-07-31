@@ -79,17 +79,7 @@ typedef struct {
     bool          sharp_turn_detected;   /**< True if a sharp turn was detected */
 } dual_line_detection_result_t;
 
-/**
- * @brief Single-result compatibility structure.
- */
-typedef struct {
-    double steering_angle;        /**< Calculated steering angle (-1.0 to +1.0 or degrees) */
-    double line_offset;           /**< Horizontal offset from frame center (-39.5 to +39.5) */
-    double avg_slope;             /**< Average inverse slope (dx / dy) */
-    size_t valid_vectors;         /**< Count of vectors passing filter criteria */
-    bool   intersection_detected; /**< True if an intersection/fork was detected */
-    bool   sharp_turn_detected;   /**< True if a sharp turn was detected */
-} detection_result_t;
+
 
 /* --- Vector Parsing & Helper Functions --- */
 
@@ -100,9 +90,7 @@ size_t detection_parse_vectors(const uint16_t *raw_vectors,
 
 double detection_vector_length(const pixy_vector_t *vec);
 double detection_vector_angle_deg(const pixy_vector_t *vec);
-void detection_vector_components(const pixy_vector_t *vec, int *dx, int *dy);
 double detection_vector_inverse_slope(const pixy_vector_t *vec);
-void detection_print_vector_details(const pixy_vector_t *vec, size_t index);
 
 /* --- Filtering & Classification Algorithms --- */
 
@@ -111,16 +99,7 @@ size_t detection_filter_vertical(const pixy_vector_t *in,
                                  pixy_vector_t *out,
                                  double min_dy_pixels);
 
-size_t detection_filter_length(const pixy_vector_t *in,
-                               size_t in_count,
-                               pixy_vector_t *out,
-                               double min_length);
 
-size_t detection_filter_roi(const pixy_vector_t *in,
-                            size_t in_count,
-                            pixy_vector_t *out,
-                            uint16_t min_y,
-                            uint16_t max_y);
 
 void detection_classify_left_right(const pixy_vector_t *vectors,
                                    size_t count,
@@ -137,36 +116,6 @@ bool detection_extract_right_line_track(const pixy_vector_t *vectors,
                                         size_t count,
                                         line_track_t *line);
 
-bool detection_extract_line_track(const pixy_vector_t *vectors,
-                                  size_t count,
-                                  line_side_t side,
-                                  line_track_t *line);
-
-/* --- Single & Multi-Vector Line Algorithms --- */
-
-bool detection_find_primary_vector(const pixy_vector_t *vectors,
-                                   size_t count,
-                                   pixy_vector_t *primary);
-
-size_t detection_calculate_avg_slope_angle(const pixy_vector_t *vectors,
-                                            size_t count,
-                                            double min_dy,
-                                            double *out_angle);
-
-size_t detection_calculate_weighted_steering(const pixy_vector_t *vectors,
-                                              size_t count,
-                                              double *out_angle);
-
-double detection_calculate_line_offset(const pixy_vector_t *vectors,
-                                       size_t count);
-
-bool detection_detect_intersection(const pixy_vector_t *vectors,
-                                    size_t count);
-
-bool detection_detect_sharp_turn(const pixy_vector_t *vectors,
-                                 size_t count,
-                                 double angle_threshold_deg);
-
 /* --- Dual-Line Detection & Steering Algorithms --- */
 
 void detection_calculate_dual_line_steering(const line_track_t *left,
@@ -177,10 +126,6 @@ void detection_calculate_dual_line_steering(const line_track_t *left,
 void detection_process_dual_lines(const uint16_t *raw_vectors,
                                   size_t num_vectors,
                                   dual_line_detection_result_t *result);
-
-void detection_process_vectors(const uint16_t *raw_vectors,
-                               size_t num_vectors,
-                               detection_result_t *result);
 
 #ifdef __cplusplus
 }

@@ -46,8 +46,9 @@ int main(void)
     pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active automated mode
 
     /* 1. Continuous H-bridge drive speed */
-    //HbridgeSpeed(&g_hbridge, 70, 70);
+    HbridgeSpeed(&g_hbridge, 70, 70);
     Steer(0.0);
+    //TestServo();
 
     double last_steering_angle = 0.0;
 

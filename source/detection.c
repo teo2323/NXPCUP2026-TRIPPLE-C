@@ -52,13 +52,6 @@ double detection_vector_angle_deg(const pixy_vector_t *vec)
     }
 }
 
-void detection_vector_components(const pixy_vector_t *vec, int *dx, int *dy)
-{
-    if (vec == NULL) return;
-    if (dx) *dx = (int)vec->x1 - (int)vec->x0;
-    if (dy) *dy = (int)vec->y1 - (int)vec->y0;
-}
-
 double detection_vector_inverse_slope(const pixy_vector_t *vec)
 {
     if (vec == NULL) return 0.0;
@@ -68,33 +61,6 @@ double detection_vector_inverse_slope(const pixy_vector_t *vec)
         return 0.0;
     }
     return ((double)vec->x0 - (double)vec->x1) / diff_y;
-}
-
-void detection_print_vector_details(const pixy_vector_t *vec, size_t index)
-{
-    if (vec == NULL) return;
-
-    int dx = (int)vec->x1 - (int)vec->x0;
-    int dy = (int)vec->y1 - (int)vec->y0;
-
-    double length    = detection_vector_length(vec);
-    double angle_deg = detection_vector_angle_deg(vec);
-
-    int len_int  = (int)length;
-    int len_frac = (int)((length - (double)len_int) * 100.0);
-    if (len_frac < 0) len_frac = -len_frac;
-
-    int ang_int  = (int)angle_deg;
-    int ang_frac = (int)((angle_deg - (double)ang_int) * 100.0);
-    if (ang_frac < 0) ang_frac = -ang_frac;
-
-    PRINTF("Vector [%u] details:\r\n", (unsigned)index);
-    PRINTF("  Start: (%u, %u) -> End: (%u, %u)\r\n",
-           (unsigned)vec->x0, (unsigned)vec->y0,
-           (unsigned)vec->x1, (unsigned)vec->y1);
-    PRINTF("  dx: %d, dy: %d\r\n", dx, dy);
-    PRINTF("  Length: %d.%02d px\r\n", len_int, len_frac);
-    PRINTF("  Angle: %d.%02d deg\r\n", ang_int, ang_frac);
 }
 
 size_t detection_filter_vertical(const pixy_vector_t *in,
@@ -108,40 +74,6 @@ size_t detection_filter_vertical(const pixy_vector_t *in,
     for (size_t i = 0; i < in_count; i++) {
         double diff_y = (double)in[i].y0 - (double)in[i].y1;
         if (fabs(diff_y) >= min_dy_pixels) {
-            out[count++] = in[i];
-        }
-    }
-    return count;
-}
-
-size_t detection_filter_length(const pixy_vector_t *in,
-                               size_t in_count,
-                               pixy_vector_t *out,
-                               double min_length)
-{
-    if (in == NULL || out == NULL) return 0;
-
-    size_t count = 0;
-    for (size_t i = 0; i < in_count; i++) {
-        if (detection_vector_length(&in[i]) >= min_length) {
-            out[count++] = in[i];
-        }
-    }
-    return count;
-}
-
-size_t detection_filter_roi(const pixy_vector_t *in,
-                            size_t in_count,
-                            pixy_vector_t *out,
-                            uint16_t min_y,
-                            uint16_t max_y)
-{
-    if (in == NULL || out == NULL) return 0;
-
-    size_t count = 0;
-    for (size_t i = 0; i < in_count; i++) {
-        if (in[i].y0 >= min_y && in[i].y0 <= max_y &&
-            in[i].y1 >= min_y && in[i].y1 <= max_y) {
             out[count++] = in[i];
         }
     }
@@ -286,160 +218,6 @@ bool detection_extract_right_line_track(const pixy_vector_t *vectors,
     return true;
 }
 
-bool detection_extract_line_track(const pixy_vector_t *vectors,
-                                  size_t count,
-                                  line_side_t side,
-                                  line_track_t *line)
-{
-    if (side == LINE_SIDE_RIGHT) {
-        return detection_extract_right_line_track(vectors, count, line);
-    } else {
-        return detection_extract_left_line_track(vectors, count, line);
-    }
-}
-
-bool detection_find_primary_vector(const pixy_vector_t *vectors,
-                                   size_t count,
-                                   pixy_vector_t *primary)
-{
-    if (vectors == NULL || count == 0 || primary == NULL) return false;
-
-    double max_score = -1.0;
-    size_t best_idx  = 0;
-
-    for (size_t i = 0; i < count; i++) {
-        double len = detection_vector_length(&vectors[i]);
-        uint16_t max_y = (vectors[i].y0 > vectors[i].y1) ? vectors[i].y0 : vectors[i].y1;
-        double score   = len * (1.0 + ((double)max_y / (double)PIXY_FRAME_HEIGHT));
-
-        if (score > max_score) {
-            max_score = score;
-            best_idx  = i;
-        }
-    }
-
-    *primary = vectors[best_idx];
-    return true;
-}
-
-size_t detection_calculate_avg_slope_angle(const pixy_vector_t *vectors,
-                                            size_t count,
-                                            double min_dy,
-                                            double *out_angle)
-{
-    if (vectors == NULL || out_angle == NULL) return 0;
-
-    double angle_sum   = 0.0;
-    size_t valid_count = 0;
-
-    for (size_t i = 0; i < count; i++) {
-        double diff_y = (double)vectors[i].y0 - (double)vectors[i].y1;
-        if (fabs(diff_y) < min_dy) {
-            continue;
-        }
-        double m = ((double)vectors[i].x0 - (double)vectors[i].x1) / diff_y;
-        angle_sum += m;
-        valid_count++;
-    }
-
-    if (valid_count > 0) {
-        angle_sum /= (double)valid_count;
-    }
-    angle_sum *= -1.0;
-
-    *out_angle = angle_sum;
-    return valid_count;
-}
-
-size_t detection_calculate_weighted_steering(const pixy_vector_t *vectors,
-                                              size_t count,
-                                              double *out_angle)
-{
-    if (vectors == NULL || out_angle == NULL) return 0;
-
-    double weighted_angle_sum = 0.0;
-    double total_weight        = 0.0;
-    size_t valid_count         = 0;
-
-    for (size_t i = 0; i < count; i++) {
-        double diff_y = (double)vectors[i].y0 - (double)vectors[i].y1;
-        if (fabs(diff_y) < DETECTION_MIN_DY_DEFAULT) {
-            continue;
-        }
-
-        double inv_slope = ((double)vectors[i].x0 - (double)vectors[i].x1) / diff_y;
-        double length    = detection_vector_length(&vectors[i]);
-
-        uint16_t max_y = (vectors[i].y0 > vectors[i].y1) ? vectors[i].y0 : vectors[i].y1;
-        double weight  = length * (1.0 + ((double)max_y / (double)PIXY_FRAME_HEIGHT));
-
-        weighted_angle_sum += inv_slope * weight;
-        total_weight       += weight;
-        valid_count++;
-    }
-
-    if (total_weight > 1e-6) {
-        *out_angle = -1.0 * (weighted_angle_sum / total_weight);
-    } else {
-        *out_angle = 0.0;
-    }
-
-    return valid_count;
-}
-
-double detection_calculate_line_offset(const pixy_vector_t *vectors,
-                                       size_t count)
-{
-    if (vectors == NULL || count == 0) return 0.0;
-
-    double x_sum       = 0.0;
-    size_t valid_count = 0;
-
-    for (size_t i = 0; i < count; i++) {
-        uint16_t bottom_x = (vectors[i].y0 > vectors[i].y1) ? vectors[i].x0 : vectors[i].x1;
-        x_sum += (double)bottom_x;
-        valid_count++;
-    }
-
-    if (valid_count == 0) return 0.0;
-    double avg_x = x_sum / (double)valid_count;
-
-    return avg_x - PIXY_FRAME_CENTER_X;
-}
-
-bool detection_detect_intersection(const pixy_vector_t *vectors,
-                                    size_t count)
-{
-    if (vectors == NULL || count < 2) return false;
-
-    for (size_t i = 0; i < count; i++) {
-        double angle_i = detection_vector_angle_deg(&vectors[i]);
-        for (size_t j = i + 1; j < count; j++) {
-            double angle_j = detection_vector_angle_deg(&vectors[j]);
-            if (fabs(angle_i - angle_j) > 30.0) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-bool detection_detect_sharp_turn(const pixy_vector_t *vectors,
-                                 size_t count,
-                                 double angle_threshold_deg)
-{
-    if (vectors == NULL || count == 0) return false;
-
-    for (size_t i = 0; i < count; i++) {
-        double angle = fabs(detection_vector_angle_deg(&vectors[i]));
-        if (angle >= angle_threshold_deg) {
-            return true;
-        }
-    }
-
-    return false;
-}
 
 void detection_calculate_dual_line_steering(const line_track_t *left,
                                              const line_track_t *right,
@@ -557,19 +335,3 @@ void detection_process_dual_lines(const uint16_t *raw_vectors,
     }
 }
 
-void detection_process_vectors(const uint16_t *raw_vectors,
-                               size_t num_vectors,
-                               detection_result_t *result)
-{
-    if (result == NULL) return;
-
-    dual_line_detection_result_t dual_res;
-    detection_process_dual_lines(raw_vectors, num_vectors, &dual_res);
-
-    result->steering_angle        = dual_res.steering_angle;
-    result->line_offset           = dual_res.center_offset;
-    result->avg_slope             = dual_res.avg_slope;
-    result->valid_vectors         = dual_res.valid_vectors;
-    result->intersection_detected = dual_res.intersection_detected;
-    result->sharp_turn_detected   = dual_res.sharp_turn_detected;
-}
