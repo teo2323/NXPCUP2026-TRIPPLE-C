@@ -2,8 +2,8 @@
 #define CONFIG_H
 
 // Steering control coefficients
-#define STEERING_P_RIGHT      30U
-#define STEERING_P_LEFT       30U
+#define STEERING_P_RIGHT      0.5  //poate fi schimbata
+#define STEERING_P_LEFT       0.5
 
 // Physical steering limits
 #define STEERING_LIMIT_RIGHT  45

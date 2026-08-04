@@ -16,11 +16,15 @@ extern "C" {
 #define PIXY_FRAME_CENTER_X            39U
 
 /* Default Detection & Track Constants */
-#define DETECTION_MIN_DY_DEFAULT       8.0
+#define DETECTION_MIN_DY_VERTICAL      8.0
 #define DETECTION_MIN_LEN_DEFAULT      10.0
-#define DUAL_LINE_HALF_TRACK_DEFAULT   20.0  /* Half track width in pixels (~40px full track) */
+#define DUAL_LINE_HALF_TRACK_DEFAULT   25.0  /* Half track width in pixels (~50px full track) */
 #define DUAL_LINE_STEERING_ANGLE_WEIGHT 1.0  /* Weight factor for line angle heading */
 #define DUAL_LINE_OFFSET_WEIGHT        0.8  /* Weight factor for center offset correction */
+#define DETECTION_MIN_DX_HORIZONTAL    8    /* Minimum |dx| in pixels for a vector to be considered horizontal */
+#define TURN_TRACK_CLOSED_ANGLE        1.6  /* Raw angle output for closed turn: 1.6 * 30 = 48 -> clamped to ±45° */
+
+
 
 /**
  * @brief Pixy Vector structure representing a single detected line vector.
@@ -79,6 +83,17 @@ typedef struct {
     bool          sharp_turn_detected;   /**< True if a sharp turn was detected */
 } dual_line_detection_result_t;
 
+/**
+ * @brief Result structure for horizontal turn-track detection.
+ */
+typedef struct {
+    bool   detected;        /**< True if a horizontal turn vector was found */
+    double center_x;        /**< X midpoint of the best horizontal vector */
+    double bottom_y;        /**< Y coordinate of the endpoint closest to the car (highest Y) */
+    bool   turn_left;       /**< True if turn direction is LEFT, false if RIGHT */
+    double steering_angle;  /**< Proportional steering angle based on vector offset from center */
+} turn_track_result_t;
+
 
 
 /* --- Vector Parsing & Helper Functions --- */
@@ -126,6 +141,12 @@ void detection_calculate_dual_line_steering(const line_track_t *left,
 void detection_process_dual_lines(const uint16_t *raw_vectors,
                                   size_t num_vectors,
                                   dual_line_detection_result_t *result);
+
+bool detection_detect_turn_track(const uint16_t *raw_vectors,
+                                 size_t num_vectors,
+                                 turn_track_result_t *result);
+
+void detection_debug_vectors(const uint16_t *raw_vectors, size_t num_vectors);
 
 #ifdef __cplusplus
 }

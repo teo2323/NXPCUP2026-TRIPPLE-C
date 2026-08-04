@@ -61,48 +61,108 @@ int main(void)
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
 
-            // PRINTF("[Pixy Camera] Detected Vectors Count: Raw = %u, Valid = %u\r\n",
-                   //(unsigned)num_vectors, (unsigned)det.valid_vectors);
+            /* Print per-frame vector categorization over serial:
+             * Shows how each raw vector is classified as VERTICAL LEFT/RIGHT,
+             * HORIZONTAL TURN, or REJECTED by the detection pipeline. */
+            // detection_debug_vectors(vectors, num_vectors);
 
             if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present)) {
-                /* Use virtual centerline steering computed by detection_process_dual_lines */
-                double steer_angle = det.steering_angle;
-
-                if (steer_angle > 0) steer_angle *= STEERING_P_RIGHT;
-                else steer_angle *= STEERING_P_LEFT;
-
-                if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
-                if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
-
-                Steer(steer_angle);
-                last_steering_angle = steer_angle;
-
-                int ang_int = (int)steer_angle;
+                double raw_steering_angle = 0.0;
 
                 if (det.both_lines_present) {
-                    // PRINTF("[Detection] 2 Track Lines (BOTH) | Raw: %u, Valid: %u | Steer: %d deg\r\n",
-                           //(unsigned)num_vectors, (unsigned)det.valid_vectors, ang_int);
+                    /* Case 1: 2 Track lines detected -> keep same logic for steering */
+                    double steer_angle = det.steering_angle;
+
+                    if (steer_angle > 0) steer_angle *= STEERING_P_RIGHT;
+                    else                 steer_angle *= STEERING_P_LEFT;
+
+                    if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
+                    if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
+
+                    Steer(steer_angle);
+                    last_steering_angle = steer_angle;
+
+                    PRINTF("Vede ambii vectori\n");
                 }
-                else if (!det.left_line_present && det.right_line_present) {
-                    // PRINTF("[Detection] 1 Track Line (RIGHT only) | Raw: %u, Valid: %u | Virtual Center Steer: %d deg\r\n",
-                           //(unsigned)num_vectors, (unsigned)det.valid_vectors, ang_int);
-                }
-                else if (det.left_line_present && !det.right_line_present) {
-                    // PRINTF("[Detection] 1 Track Line (LEFT only) | Raw: %u, Valid: %u | Virtual Center Steer: %d deg\r\n",
-                           //(unsigned)num_vectors, (unsigned)det.valid_vectors, ang_int);
+                else {
+                    /* Single line detected case (lines 76-87 commented out):
+                    else if (det.left_line_present && !det.right_line_present) {
+                        // Case 2: Only LEFT track line detected -> find center by adding 25px
+                        double track_center_x = det.left_line.bottom_x + 25.0;
+                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
+                        raw_steering_angle    = (-1.0 * det.left_line.inverse_slope) + (center_offset * 0.25);
+                    }
+                    else if (!det.left_line_present && det.right_line_present) {
+                        // Case 3: Only RIGHT track line detected -> find center by removing 25px
+                        double track_center_x = det.right_line.bottom_x - 25.0;
+                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
+                        raw_steering_angle    = (-1.0 * det.right_line.inverse_slope) + (center_offset * 0.25);
+                    }
+                    */
+
+                    /* Find slope of the visible track line */
+                    const line_track_t *visible_line = det.left_line_present ? &det.left_line : &det.right_line;
+
+                    double slope = visible_line->inverse_slope;
+
+                    /* Steer with maximum angle to left or right based on slope direction:
+                     * Positive slope (tilts right) -> steer max RIGHT (+45 deg)
+                     * Negative slope (tilts left)  -> steer max LEFT  (-45 deg) */
+                    double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT * STEERING_P_LEFT : (double)STEERING_LIMIT_RIGHT * STEERING_P_RIGHT;
+
+                    // Foarte probabil robotul detecteaza mereu o singura linie si trage mereu de volan in partea opusa
+
+                    if (det.left_line_present) {
+                        PRINTF("Linia stanga prezenta!\r\n");
+                    } else {
+                        PRINTF("Linia dreapta prezenta!\r\n");
+                    }
+
+                    int slope_x100 = (int)(slope * 100.0);
+                    int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
+                    if (slope < 0 && slope_x100 / 100 == 0) {
+                        PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
+                    } else {
+                        PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
+                    }
+
+                    Steer(steer_angle);
+                    last_steering_angle = steer_angle;
                 }
             }
             else {
-                /* 0 lines detected -> Gently decay search angle toward 0° straight to prevent lockup */
-                last_steering_angle *= 0.8;
-                if (fabs(last_steering_angle) < 1.0) {
-                    last_steering_angle = 0.0;
-                }
-                Steer(last_steering_angle);
+                /* 0 track lines detected -> search for horizontal turn-track vector */
+                turn_track_result_t turn;
+                if (detection_detect_turn_track(vectors, num_vectors, &turn)) {
+                    /* A horizontal vector found: steer proportionally toward the turn */
+                    double steer_angle = turn.steering_angle;
 
-                int ang_int = (int)last_steering_angle;
-                // PRINTF("[Detection] 0 Track Lines | Raw: %u, Valid: %u | Decaying search angle: %d deg\r\n",
-                       //(unsigned)num_vectors, (unsigned)det.valid_vectors, ang_int);
+                    if (steer_angle > 0) steer_angle *= STEERING_P_RIGHT;
+                    else                 steer_angle *= STEERING_P_LEFT;
+
+                    if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
+                    if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
+
+                    Steer(steer_angle);
+                    last_steering_angle = steer_angle;
+
+                    // PRINTF("[Turn] Horizontal vector detected | center_x: %d | dir: %s | Steer: %d deg\r\n",
+                           //(int)turn.center_x, turn.turn_left ? "LEFT" : "RIGHT", (int)steer_angle);
+
+                    PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
+                }
+                else {
+                    /* No horizontal vector either -> gently decay angle toward straight */
+                    last_steering_angle *= 0.8;
+                    if (fabs(last_steering_angle) < 1.0) {
+                        last_steering_angle = 0.0;
+                    }
+                    Steer(last_steering_angle);
+
+                    PRINTF("Nu am gasit niciun vector, ma pis pe ea de detectie\r\n");
+
+                    // PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
+                }
             }
         }
     }

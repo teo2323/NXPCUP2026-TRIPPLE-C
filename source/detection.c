@@ -80,10 +80,16 @@ size_t detection_filter_vertical(const pixy_vector_t *in,
     return count;
 }
 
-/* Helper to get bottom X coordinate of a vector (point closest to car) */
+/* Helper: X coordinate of the endpoint closest to the car (highest Y value) */
 static double get_vector_bottom_x(const pixy_vector_t *vec)
 {
     return (vec->y0 > vec->y1) ? (double)vec->x0 : (double)vec->x1;
+}
+
+/* Helper: Y coordinate of the endpoint closest to the car (highest Y value) */
+static double get_vector_bottom_y(const pixy_vector_t *vec)
+{
+    return (vec->y0 > vec->y1) ? (double)vec->y0 : (double)vec->y1;
 }
 
 void detection_classify_left_right(const pixy_vector_t *vectors,
@@ -218,7 +224,6 @@ bool detection_extract_right_line_track(const pixy_vector_t *vectors,
     return true;
 }
 
-
 void detection_calculate_dual_line_steering(const line_track_t *left,
                                              const line_track_t *right,
                                              double half_track_width,
@@ -237,35 +242,31 @@ void detection_calculate_dual_line_steering(const line_track_t *left,
     if (has_right) result->right_line = *right;
 
     if (has_left && has_right) {
-        /* CASE 1: Both Left and Right lines detected -> Track Centerline */
+        /* CASE 1: Both lines detected -> Track Centerline */
         result->track_width    = right->bottom_x - left->bottom_x;
         result->track_center_x = (left->bottom_x + right->bottom_x) / 2.0;
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
         result->avg_slope      = (left->inverse_slope + right->inverse_slope) / 2.0;
 
-        /* Combined steering angle = inverse slope heading + center offset correction */
+        /* Combined steering: inverse slope heading + center offset correction */
         result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
     }
     else if (!has_left && has_right) {
-        /* CASE 2: Left line is MISSING (only Right line detected).
-         * Estimate virtual track center: track_center = right_x - half_track_width */
+        /* CASE 2: Left line MISSING -> virtual center = right_x - half_track_width */
         result->track_center_x = right->bottom_x - half_track_width;
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = right->inverse_slope;
 
-        /* Proportional steering angle from virtual centerline offset and line slope */
         result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
     }
     else if (has_left && !has_right) {
-        /* CASE 3: Right line is MISSING (only Left line detected).
-         * Estimate virtual track center: track_center = left_x + half_track_width */
+        /* CASE 3: Right line MISSING -> virtual center = left_x + half_track_width */
         result->track_center_x = left->bottom_x + half_track_width;
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = left->inverse_slope;
 
-        /* Proportional steering angle from virtual centerline offset and line slope */
         result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
     }
     else {
@@ -303,7 +304,7 @@ void detection_process_dual_lines(const uint16_t *raw_vectors,
     size_t parsed_count = detection_parse_vectors(raw_vectors, num_vectors, parsed, 16);
 
     pixy_vector_t filtered[16];
-    size_t filtered_count = detection_filter_vertical(parsed, parsed_count, filtered, DETECTION_MIN_DY_DEFAULT);
+    size_t filtered_count = detection_filter_vertical(parsed, parsed_count, filtered, DETECTION_MIN_DY_VERTICAL);
 
     result->valid_vectors = filtered_count;
     if (filtered_count == 0) return;
@@ -335,3 +336,176 @@ void detection_process_dual_lines(const uint16_t *raw_vectors,
     }
 }
 
+bool detection_detect_turn_track(const uint16_t *raw_vectors,
+                                 size_t num_vectors,
+                                 turn_track_result_t *result)
+{
+    if (result == NULL) return false;
+
+    /* Reset result */
+    result->detected       = false;
+    result->center_x       = PIXY_FRAME_CENTER_X;
+    result->bottom_y       = 0.0;
+    result->turn_left      = false;
+    result->steering_angle = 0.0;
+
+    if (raw_vectors == NULL || num_vectors == 0) return false;
+
+    /* Step 1: Parse raw vectors into structured form */
+    pixy_vector_t parsed[16];
+    size_t parsed_count = detection_parse_vectors(raw_vectors, num_vectors, parsed, 16);
+    if (parsed_count == 0) return false;
+
+    /* Step 2: Filter for horizontal-oriented vectors.
+     * A vector is horizontal when |dx| > |dy| AND |dx| >= DETECTION_MIN_DX_HORIZONTAL.
+     * This rejects vertical track lines and short noise vectors. */
+    pixy_vector_t horiz[16];
+    size_t horiz_count = 0;
+
+    for (size_t i = 0; i < parsed_count; i++) {
+        int dx     = (int)parsed[i].x1 - (int)parsed[i].x0;
+        int dy     = (int)parsed[i].y1 - (int)parsed[i].y0;
+        int abs_dx = dx < 0 ? -dx : dx;
+        int abs_dy = dy < 0 ? -dy : dy;
+
+        /* Must be predominantly horizontal and long enough to be meaningful */
+        if (abs_dx > abs_dy && abs_dx >= DETECTION_MIN_DX_HORIZONTAL) {
+            horiz[horiz_count++] = parsed[i];
+        }
+    }
+
+    if (horiz_count == 0) return false;
+
+    /* Step 3: Score each horizontal vector and find the best one.
+     * Score = bottom_y: the y-coordinate of the endpoint closest to the car.
+     * Higher bottom_y = closer to car = more relevant for turn decision.
+     *
+     * IMPROVEMENT: A secondary score factor could be vector length (abs_dx),
+     * preferring longer, more reliable horizontal lines over short ones. */
+    size_t best_idx   = 0;
+    double best_score = -1.0;
+
+    for (size_t i = 0; i < horiz_count; i++) {
+        double bot_y = get_vector_bottom_y(&horiz[i]);
+        double score = bot_y;   /* Primary: highest y = closest to car */
+
+        if (score > best_score) {
+            best_score = score;
+            best_idx   = i;
+        }
+    }
+
+    const pixy_vector_t *best = &horiz[best_idx];
+
+    /* Step 4: Extract geometry of the best horizontal vector */
+    int dx_raw = (int)best->x1 - (int)best->x0;
+    int dy_raw = (int)best->y1 - (int)best->y0;
+    double center_x = ((double)best->x0 + (double)best->x1) / 2.0;
+    double bot_y    = get_vector_bottom_y(best);
+
+    /* Step 5: Determine turn direction from the slope (dy/dx) of the horizontal vector.
+     *
+     * The Pixy2 frame has y=0 at the top (far from car) and y=51 at the bottom (close to car).
+     * At a track turn, the horizontal end-of-track vector is tilted by the curve:
+     *
+     *   RIGHT turn: the right side of the vector is closer to the car (higher y).
+     *               Going left-to-right (dx > 0), y increases (dy > 0) -> same sign -> RIGHT.
+     *
+     *   LEFT  turn: the left side of the vector is closer to the car (higher y).
+     *               Going left-to-right (dx > 0), y decreases (dy < 0) -> opposite sign -> LEFT.
+     *
+     * Rule: turn_left = (dx and dy have OPPOSITE signs), i.e. dx * dy < 0.
+     * If the vector is perfectly horizontal (dy == 0), fall back to midpoint comparison. */
+    bool turn_left;
+    if (dy_raw != 0 && dx_raw != 0) {
+        turn_left = ((dx_raw > 0 && dy_raw < 0) || (dx_raw < 0 && dy_raw > 0));
+    } else {
+        /* Fallback: perfectly horizontal vector -> use midpoint vs frame center */
+        turn_left = (center_x < (double)PIXY_FRAME_CENTER_X);
+    }
+
+    /* Step 6: Output a closed (committed) turn angle toward the detected direction.
+     * Rather than a proportional correction, the car commits to a full steering
+     * angle in the turn direction so it can recover the track lines after the curve.
+     * TURN_TRACK_CLOSED_ANGLE (1.6) x STEERING_P (30) = 48 -> clamped to +-45 in main.c. */
+    double steering_angle = turn_left ? -TURN_TRACK_CLOSED_ANGLE : +TURN_TRACK_CLOSED_ANGLE;
+
+    /* Populate result */
+    result->detected       = true;
+    result->center_x       = center_x;
+    result->bottom_y       = bot_y;
+    result->turn_left      = turn_left;
+    result->steering_angle = steering_angle;
+
+    return true;
+}
+
+void detection_debug_vectors(const uint16_t *raw_vectors, size_t num_vectors)
+{
+    PRINTF("\r\n=== [Detection Debug] Raw vectors: %u ===\r\n", (unsigned)num_vectors);
+
+    if (raw_vectors == NULL || num_vectors == 0) {
+        PRINTF("  No raw vectors to process.\r\n");
+        return;
+    }
+
+    /* Parse all raw vectors */
+    pixy_vector_t parsed[16];
+    size_t parsed_count = detection_parse_vectors(raw_vectors, num_vectors, parsed, 16);
+
+    /* Counters for the summary */
+    size_t cnt_vertical_left  = 0;
+    size_t cnt_vertical_right = 0;
+    size_t cnt_horizontal     = 0;
+    size_t cnt_rejected       = 0;
+
+    for (size_t i = 0; i < parsed_count; i++) {
+        const pixy_vector_t *v = &parsed[i];
+
+        int dx     = (int)v->x1 - (int)v->x0;
+        int dy     = (int)v->y1 - (int)v->y0;
+        int abs_dx = dx < 0 ? -dx : dx;
+        int abs_dy = dy < 0 ? -dy : dy;
+
+        /* Replicate vertical filter: |dy| >= DETECTION_MIN_DY_VERTICAL (8px) */
+        bool passes_vertical = (abs_dy >= (int)DETECTION_MIN_DY_VERTICAL);
+
+        /* Replicate horizontal filter: |dx| > |dy| AND |dx| >= DETECTION_MIN_DX_HORIZONTAL (8px) */
+        bool passes_horizontal = (abs_dx > abs_dy && abs_dx >= DETECTION_MIN_DX_HORIZONTAL);
+
+        /* Determine bottom_x for left/right classification (highest Y endpoint) */
+        double bot_x = (v->y0 > v->y1) ? (double)v->x0 : (double)v->x1;
+
+        PRINTF("  [%u] (%u,%u)->(%u,%u) | dx=%d dy=%d | ",
+               (unsigned)i,
+               (unsigned)v->x0, (unsigned)v->y0,
+               (unsigned)v->x1, (unsigned)v->y1,
+               dx, dy);
+
+        if (passes_vertical) {
+            /* Classify as left or right based on bottom_x vs frame center */
+            if (bot_x < PIXY_FRAME_CENTER_X) {
+                PRINTF("VERTICAL -> LEFT  (bot_x=%d)\r\n", (int)bot_x);
+                cnt_vertical_left++;
+            } else {
+                PRINTF("VERTICAL -> RIGHT (bot_x=%d)\r\n", (int)bot_x);
+                cnt_vertical_right++;
+            }
+        } else if (passes_horizontal) {
+            double center_x = ((double)v->x0 + (double)v->x1) / 2.0;
+            const char *dir = (center_x < PIXY_FRAME_CENTER_X) ? "LEFT" : "RIGHT";
+            PRINTF("HORIZONTAL -> TURN %s (center_x=%d)\r\n", dir, (int)center_x);
+            cnt_horizontal++;
+        } else {
+            PRINTF("REJECTED   (|dx|=%d |dy|=%d - too short or diagonal)\r\n",
+                   abs_dx, abs_dy);
+            cnt_rejected++;
+        }
+    }
+
+    PRINTF("--- Summary: LEFT=%u RIGHT=%u HORIZ=%u REJECTED=%u ---\r\n\r\n",
+           (unsigned)cnt_vertical_left,
+           (unsigned)cnt_vertical_right,
+           (unsigned)cnt_horizontal,
+           (unsigned)cnt_rejected);
+}
