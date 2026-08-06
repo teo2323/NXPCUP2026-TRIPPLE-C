@@ -52,6 +52,8 @@ int main(void)
 
     double last_steering_angle = 0.0;
 
+
+
     while (1)
     {
         /* Maintain continuous motor speed rate */
@@ -108,7 +110,7 @@ int main(void)
                     /* Steer with maximum angle to left or right based on slope direction:
                      * Positive slope (tilts right) -> steer max RIGHT (+45 deg)
                      * Negative slope (tilts left)  -> steer max LEFT  (-45 deg) */
-                    double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT * STEERING_P_LEFT : (double)STEERING_LIMIT_RIGHT * STEERING_P_RIGHT;
+                    double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT : (double)STEERING_LIMIT_RIGHT ;
 
                     // Foarte probabil robotul detecteaza mereu o singura linie si trage mereu de volan in partea opusa
 
