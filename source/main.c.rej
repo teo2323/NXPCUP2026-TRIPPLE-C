@@ -1,154 +1,179 @@
 diff a/source/main.c b/source/main.c	(rejected hunks)
-@@ -52,6 +52,7 @@ int main(void)
+@@ -17,6 +17,63 @@
+ #define MAX_VECTORS          10
+ #define AUTOMATED_BASE_SPEED 40
+ 
++
++#define RX_BUF_SIZE 128
++volatile char rx_buf[RX_BUF_SIZE];
++volatile uint8_t rx_idx = 0;
++volatile bool rx_complete = false;
++
++void Process_LPUART_Rx(void)
++
++{
++    uint32_t flags = LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL);
++
++    // 1. Cur????are erori de linie LPUART
++    if (flags & (kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag | kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag))
++    {
++        LPUART_ClearStatusFlags(LP_FLEXCOMM3_PERIPHERAL,
++                                kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag |
++                                kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag);
++    }
++
++    // 2. Citire caractere din buffer-ul hardware
++    while (LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL) & kLPUART_RxDataRegFullFlag)
++    {
++        char c = (char)LPUART_ReadByte(LP_FLEXCOMM3_PERIPHERAL);
++
++        if (c == ';' || c == '\n' || c == '\r') 
++        {
++            if (rx_idx > 0U) 
++            {
++                rx_buf[rx_idx] = '\0';
++                rx_complete = true; // Semnal??m c?? avem un mesaj complet
++                rx_idx = 0U;
++            }
++        } 
++        else if ((uint8_t)c >= 32U && rx_idx < (uint8_t)(sizeof(rx_buf) - 1U)) 
++        {
++            rx_buf[rx_idx++] = c;
++        }
++    }
++}
++
++void LPUART_SendChar(char c)
++{
++    // A??teapt?? p??n?? c??nd registrul de transmisie este liber
++    while (!(LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL) & kLPUART_TxDataRegEmptyFlag))
++    {
++    }
++    LPUART_WriteByte(LP_FLEXCOMM3_PERIPHERAL, (uint8_t)c);
++}
++
++void LPUART_SendString(const char *str)
++{
++    while (*str)
++    {
++        LPUART_SendChar(*str++);
++    }
++}
++
+ int main(void)
+ {
+     uint16_t vectors[MAX_VECTORS * 4];
+@@ -52,10 +109,16 @@ int main(void)
  
      double last_steering_angle = 0.0;
      double previous_error      = 0.0;  // D term: stores last frame's angle
-+    double learned_half_track  = DUAL_LINE_HALF_TRACK_DEFAULT; // invatat din date reale cand vede ambele linii
+-    double learned_half_track  = DUAL_LINE_HALF_TRACK_DEFAULT; // invatat din date reale cand vede ambele linii
  
++
++    LPUART_SendString("AT\r\n");
      while (1)
      {
-@@ -68,21 +69,24 @@ int main(void)
++        Process_LPUART_Rx();
++        if (rx_complete) {
++            printf("Received message: %s\n", rx_buf);
++            rx_complete = false;
++        }
+         /* Maintain continuous motor speed rate */
+         HbridgeSpeed(&g_hbridge, 70, 70);
+ 
+@@ -69,14 +132,10 @@ int main(void)
              // detection_debug_vectors(vectors, num_vectors);
  
              if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present)) {
--                double raw_steering_angle = 0.0;
++                double raw_steering_angle = 0.0;
  
                  if (det.both_lines_present) {
--                    /* Case 1: 2 Track lines detected -> keep same logic for steering */
--                    double steer_angle = det.steering_angle;
-+                    /* Case 1: 2 Track lines detectate -> actualizam latimea reala a pistei */
-+                    if (det.track_width > 10.0 && det.track_width < 78.0) {
-+                        /* Filtru simplu: acceptam doar valori rezonabile (10..78 px) */
-+                        learned_half_track = det.track_width / 2.0;
-+                    }
-+
-+                    double error = det.steering_angle;
+-                    /* Case 1: 2 Track lines detectate -> actualizam latimea reala a pistei */
+-                    if (det.track_width > 10.0 && det.track_width < 78.0) {
+-                        /* Filtru simplu: acceptam doar valori rezonabile (10..78 px) */
+-                        learned_half_track = det.track_width / 2.0;
+-                    }
+-
++                    /* Case 1: 2 Track lines detected -> keep same logic for steering */
+                     double error = det.steering_angle;
  
--                    /* P term */
--                    if (steer_angle > 0) steer_angle *= STEERING_P_RIGHT;
--                    else                 steer_angle *= STEERING_P_LEFT;
-+                    /* D term: calculat din eroarea bruta (inainte de P) */
-+                    double derivative = error - previous_error;
-+                    previous_error    = error;
- 
--                    /* D term: dampen rapid angle changes */
--                    double derivative = steer_angle - previous_error;
--                    if (derivative > 0) steer_angle += STEERING_D_RIGHT * derivative;
--                    else                steer_angle += STEERING_D_LEFT  * derivative;
--                    previous_error = steer_angle;
-+                    /* P + D combinate: output = P*error + D*derivative */
-+                    double p_term = (error > 0) ? (STEERING_P_RIGHT * error) : (STEERING_P_LEFT * error);
-+                    double d_term = (derivative > 0) ? (STEERING_D_RIGHT * derivative) : (STEERING_D_LEFT * derivative);
-+                    double steer_angle = p_term + d_term;
- 
-                     if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
-                     if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
-@@ -90,52 +94,44 @@ int main(void)
+                     /* D term: calculat din eroarea bruta (inainte de P) */
+@@ -94,44 +153,49 @@ int main(void)
                      Steer(steer_angle);
                      last_steering_angle = steer_angle;
  
--                    PRINTF("Vede ambii vectori\n");
-+                    PRINTF("Ambele linii | latime pista: %d px | steer: %d deg\r\n",
-+                           (int)det.track_width, (int)steer_angle);
+-                    PRINTF("Ambele linii | latime pista: %d px | steer: %d deg\r\n",
+-                           (int)det.track_width, (int)steer_angle);
++                    PRINTF("Vede ambii vectori\n");
                  }
                  else {
--                    /* Single line detected case (lines 76-87 commented out):
--                    else if (det.left_line_present && !det.right_line_present) {
--                        // Case 2: Only LEFT track line detected -> find center by adding 25px
--                        double track_center_x = det.left_line.bottom_x + 25.0;
--                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
--                        raw_steering_angle    = (-1.0 * det.left_line.inverse_slope) + (center_offset * 0.25);
--                    }
--                    else if (!det.left_line_present && det.right_line_present) {
--                        // Case 3: Only RIGHT track line detected -> find center by removing 25px
--                        double track_center_x = det.right_line.bottom_x - 25.0;
--                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
--                        raw_steering_angle    = (-1.0 * det.right_line.inverse_slope) + (center_offset * 0.25);
--                    }
--                    */
-+                    /* Case 2/3: O singura linie detectata.
-+                     *
-+                     * Recalculam steering_angle folosind learned_half_track (invatat din date reale)
-+                     * in loc de constanta fixa DUAL_LINE_HALF_TRACK_DEFAULT (25px). */
-+                    dual_line_detection_result_t single_det = det;
-+                    detection_calculate_dual_line_steering(
-+                        det.left_line_present  ? &det.left_line  : NULL,
-+                        det.right_line_present ? &det.right_line : NULL,
-+                        learned_half_track,
-+                        &single_det
-+                    );
-+
-+                    double error = single_det.steering_angle;
-+
-+                    double derivative = error - previous_error;
-+                    previous_error    = error;
-+
-+                    double p_term = (error > 0) ? (STEERING_P_RIGHT * error) : (STEERING_P_LEFT * error);
-+                    double d_term = (derivative > 0) ? (STEERING_D_RIGHT * derivative) : (STEERING_D_LEFT * derivative);
-+                    double steer_angle = p_term + d_term;
+-                    /* Case 2/3: O singura linie detectata.
+-                     *
+-                     * Recalculam steering_angle folosind learned_half_track (invatat din date reale)
+-                     * in loc de constanta fixa DUAL_LINE_HALF_TRACK_DEFAULT (25px). */
+-                    dual_line_detection_result_t single_det = det;
+-                    detection_calculate_dual_line_steering(
+-                        det.left_line_present  ? &det.left_line  : NULL,
+-                        det.right_line_present ? &det.right_line : NULL,
+-                        learned_half_track,
+-                        &single_det
+-                    );
+-
+-                    double error = single_det.steering_angle;
+-
+-                    double derivative = error - previous_error;
+-                    previous_error    = error;
++                    /* Single line detected case (lines 76-87 commented out):
++                    else if (det.left_line_present && !det.right_line_present) {
++                        // Case 2: Only LEFT track line detected -> find center by adding 25px
++                        double track_center_x = det.left_line.bottom_x + 25.0;
++                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
++                        raw_steering_angle    = (-1.0 * det.left_line.inverse_slope) + (center_offset * 0.25);
++                    }
++                    else if (!det.left_line_present && det.right_line_present) {
++                        // Case 3: Only RIGHT track line detected -> find center by removing 25px
++                        double track_center_x = det.right_line.bottom_x - 25.0;
++                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
++                        raw_steering_angle    = (-1.0 * det.right_line.inverse_slope) + (center_offset * 0.25);
++                    }
++                    */
  
--                    /* Find slope of the visible track line */
--                    const line_track_t *visible_line = det.left_line_present ? &det.left_line : &det.right_line;
--
--                    double slope = visible_line->inverse_slope;
--
--                    /* Steer with maximum angle to left or right based on slope direction:
--                     * Positive slope (tilts right) -> steer max RIGHT (+45 deg)
--                     * Negative slope (tilts left)  -> steer max LEFT  (-45 deg) */
--                    double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT * STEERING_P_LEFT : (double)STEERING_LIMIT_RIGHT * STEERING_P_RIGHT;
-+                    if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
-+                    if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
+-                    double p_term = (error > 0) ? (STEERING_P_RIGHT * error) : (STEERING_P_LEFT * error);
+-                    double d_term = (derivative > 0) ? (STEERING_D_RIGHT * derivative) : (STEERING_D_LEFT * derivative);
+-                    double steer_angle = p_term + d_term;
++                    /* Find slope of the visible track line */
++                    const line_track_t *visible_line = det.left_line_present ? &det.left_line : &det.right_line;
  
--                    // Foarte probabil robotul detecteaza mereu o singura linie si trage mereu de volan in partea opusa
-+                    Steer(steer_angle);
-+                    last_steering_angle = steer_angle;
+-                    if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
+-                    if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
++                    double slope = visible_line->inverse_slope;
  
-                     if (det.left_line_present) {
--                        PRINTF("Linia stanga prezenta!\r\n");
--                    } else {
--                        PRINTF("Linia dreapta prezenta!\r\n");
--                    }
--
--                    int slope_x100 = (int)(slope * 100.0);
--                    int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
--                    if (slope < 0 && slope_x100 / 100 == 0) {
--                        PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
-+                        PRINTF("O linie (STANGA) | centru virtual: %d | half=%d | steer: %d deg\r\n",
-+                               (int)single_det.track_center_x, (int)learned_half_track, (int)steer_angle);
-                     } else {
--                        PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
-+                        PRINTF("O linie (DREAPTA) | centru virtual: %d | half=%d | steer: %d deg\r\n",
-+                               (int)single_det.track_center_x, (int)learned_half_track, (int)steer_angle);
-                     }
--
 -                    Steer(steer_angle);
 -                    last_steering_angle = steer_angle;
++                    int slope_x100 = (int)(slope * 100.0);
++                    int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
+ 
+                     if (det.left_line_present) {
+-                        PRINTF("O linie (STANGA) | centru virtual: %d | half=%d | steer: %d deg\r\n",
+-                               (int)single_det.track_center_x, (int)learned_half_track, (int)steer_angle);
++                        PRINTF("Linia stanga prezenta!\r\n");
+                     } else {
+-                        PRINTF("O linie (DREAPTA) | centru virtual: %d | half=%d | steer: %d deg\r\n",
+-                               (int)single_det.track_center_x, (int)learned_half_track, (int)steer_angle);
++                        PRINTF("Linia dreapta prezenta!\r\n");
+                     }
++
++                    if (slope < 0 && slope_x100 / 100 == 0) {
++                        PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
++                    } else {
++                        PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
++                    }
++
++                    
++                        double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT : (double)STEERING_LIMIT_RIGHT;
++                        Steer(steer_angle);
++                        last_steering_angle = steer_angle;
++                    
                  }
              }
              else {
-@@ -143,17 +139,16 @@ int main(void)
-                 turn_track_result_t turn;
-                 if (detection_detect_turn_track(vectors, num_vectors, &turn)) {
-                     /* A horizontal vector found: steer proportionally toward the turn */
--                    double steer_angle = turn.steering_angle;
-+                    double error = turn.steering_angle;
- 
--                    /* P term */
--                    if (steer_angle > 0) steer_angle *= STEERING_P_RIGHT;
--                    else                 steer_angle *= STEERING_P_LEFT;
-+                    /* D term: calculat din eroarea bruta (inainte de P) */
-+                    double derivative = error - previous_error;
-+                    previous_error    = error;
- 
--                    /* D term: dampen rapid angle changes */
--                    double derivative = steer_angle - previous_error;
--                    if (derivative > 0) steer_angle += STEERING_D_RIGHT * derivative;
--                    else                steer_angle += STEERING_D_LEFT  * derivative;
--                    previous_error = steer_angle;
-+                    /* P + D combinate: output = P*error + D*derivative */
-+                    double p_term = (error > 0) ? (STEERING_P_RIGHT * error) : (STEERING_P_LEFT * error);
-+                    double d_term = (derivative > 0) ? (STEERING_D_RIGHT * derivative) : (STEERING_D_LEFT * derivative);
-+                    double steer_angle = p_term + d_term;
- 
-                     if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
-                     if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
