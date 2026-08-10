@@ -12,67 +12,8 @@
 #include "servo.h"
 #include "esc.h"
 #include "detection.h"
+#include "wifi.h" // Include noul header pentru funcțiile Wi-Fi
 #include <math.h>
-
-#define MAX_VECTORS          10
-#define AUTOMATED_BASE_SPEED 40
-
-
-#define RX_BUF_SIZE 128
-volatile char rx_buf[RX_BUF_SIZE];
-volatile uint8_t rx_idx = 0;
-volatile bool rx_complete = false;
-
-void Process_LPUART_Rx(void)
-
-{
-    uint32_t flags = LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL);
-
-    // 1. Curățare erori de linie LPUART
-    if (flags & (kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag | kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag))
-    {
-        LPUART_ClearStatusFlags(LP_FLEXCOMM3_PERIPHERAL,
-                                kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag |
-                                kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag);
-    }
-
-    // 2. Citire caractere din buffer-ul hardware
-    while (LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL) & kLPUART_RxDataRegFullFlag)
-    {
-        char c = (char)LPUART_ReadByte(LP_FLEXCOMM3_PERIPHERAL);
-
-        if (c == ';' || c == '\n' || c == '\r') 
-        {
-            if (rx_idx > 0U) 
-            {
-                rx_buf[rx_idx] = '\0';
-                rx_complete = true; // Semnalăm că avem un mesaj complet
-                rx_idx = 0U;
-            }
-        } 
-        else if ((uint8_t)c >= 32U && rx_idx < (uint8_t)(sizeof(rx_buf) - 1U)) 
-        {
-            rx_buf[rx_idx++] = c;
-        }
-    }
-}
-
-void LPUART_SendChar(char c)
-{
-    // Așteaptă până când registrul de transmisie este liber
-    while (!(LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL) & kLPUART_TxDataRegEmptyFlag))
-    {
-    }
-    LPUART_WriteByte(LP_FLEXCOMM3_PERIPHERAL, (uint8_t)c);
-}
-
-void LPUART_SendString(const char *str)
-{
-    while (*str)
-    {
-        LPUART_SendChar(*str++);
-    }
-}
 
 int main(void)
 {
@@ -111,14 +52,10 @@ int main(void)
     double previous_error      = 0.0;  // D term: stores last frame's angle
 
 
-    LPUART_SendString("AT\r\n");
+    Wifi_Init(); // Inițializează modulul Wi-Fi
     while (1)
     {
-        Process_LPUART_Rx();
-        if (rx_complete) {
-            printf("Received message: %s\n", rx_buf);
-            rx_complete = false;
-        }
+        Wifi_Process_Rx(); // Procesează datele primite de la modulul Wi-Fi
         /* Maintain continuous motor speed rate */
         HbridgeSpeed(&g_hbridge, 70, 70);
 
@@ -138,7 +75,7 @@ int main(void)
                     /* Case 1: 2 Track lines detected -> keep same logic for steering */
                     double error = det.steering_angle;
 
-                    /* D term: calculat din eroarea bruta (inainte de P) */
+                    /* D term: calculated from the raw error */
                     double derivative = error - previous_error;
                     previous_error    = error;
 
@@ -205,11 +142,11 @@ int main(void)
                     /* A horizontal vector found: steer proportionally toward the turn */
                     double error = turn.steering_angle;
 
-                    /* D term: calculat din eroarea bruta (inainte de P) */
+                    /* D term: calculated from the raw error */
                     double derivative = error - previous_error;
                     previous_error    = error;
 
-                    /* P + D combinate: output = P*error + D*derivative */
+                    /* P*error + D*derivative */
                     double p_term = (error > 0) ? (STEERING_P_RIGHT * error) : (STEERING_P_LEFT * error);
                     double d_term = (derivative > 0) ? (STEERING_D_RIGHT * derivative) : (STEERING_D_LEFT * derivative);
                     double steer_angle = p_term + d_term;
