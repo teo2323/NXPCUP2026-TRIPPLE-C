@@ -1,0 +1,10 @@
+diff a/include/detection.h b/include/detection.h	(rejected hunks)
+@@ -22,7 +22,7 @@ extern "C" {
+ #define DUAL_LINE_STEERING_ANGLE_WEIGHT 1.0  /* Weight factor for line angle heading */
+ #define DUAL_LINE_OFFSET_WEIGHT        0.8  /* Weight factor for center offset correction */
+ #define DETECTION_MIN_DX_HORIZONTAL    8    /* Minimum |dx| in pixels for a vector to be considered horizontal */
+-#define TURN_TRACK_CLOSED_ANGLE        1.6  /* Raw angle output for closed turn: 1.6 * 30 = 48 -> clamped to ??45?? */
++#define TURN_TRACK_CLOSED_ANGLE        60.0  /* Raw angle output for closed turn: 60 * P(0.5) = 30?? -> adjust as needed */
+ 
+ 
+ 
