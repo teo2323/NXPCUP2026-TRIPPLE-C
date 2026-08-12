@@ -18,7 +18,10 @@ pin_labels:
   identifier: PWM1_A0}
 - {pin_num: K3, pin_signal: PIO2_4/WUU0_IN17/FC9_P0/SDHC0_CLK/SCT0_OUT2/PWM1_A1/FLEXIO0_D12/SMARTDMA_PIO24/FLEXSPI0_B_DATA0/SINC0_MCLK1/SAI0_RXD1, label: 'P2_4/TP26/J12[5]/J3[11]/SJ5[3]',
   identifier: PWM1_A1}
+- {pin_num: C5, pin_signal: PIO1_1/TRIG_IN1/FC3_P1/FC4_P5/CT_INP5/SCT0_OUT7/FLEXIO0_D9/SAI1_TX_FS/TSI0_CH1/ADC0_A17/CMP1_IN0, label: 'P1_1/J5[5]/J2[15]', identifier: ESP_TX}
 - {pin_num: B6, pin_signal: PIO0_24/FC1_P0/CT0_MAT0/ADC0_B16, label: 'P0_24/SJ7[1]', identifier: GPIO0}
+- {pin_num: C6, pin_signal: PIO1_0/WUU0_IN6/LPTMR0_ALT3/TRIG_IN0/FC3_P0/FC4_P4/CT_INP4/SCT0_OUT6/FLEXIO0_D8/SAI1_TX_BCLK/TSI0_CH0/ADC0_A16/CMP0_IN0, label: 'P1_0/J5[6]/J2[17]',
+  identifier: ESP_RX}
 - {pin_num: D7, pin_signal: PIO0_31/CT_INP3/ADC0_B23, label: 'P0_31/J1[16]', identifier: MOTOR2_IN4}
 - {pin_num: E8, pin_signal: PIO0_28/FC1_P4/FC0_P4/CT_INP0/ADC0_B20, label: 'P0_28/J2[2]', identifier: MOTOR2_IN3}
 - {pin_num: E10, pin_signal: PIO0_27/FC1_P3/CT0_MAT3/ADC0_B19, label: 'P0_27/SJ6[1]', identifier: LED_GREEN;GPIO_27}
@@ -218,7 +221,7 @@ void BOARD_InitPins(void)
                       | PORT_PCR_IBE(PCR_IBE_ibe1));
 
     /* PORT1_0 (pin C6) is configured as FC3_P0 */
-    PORT_SetPinMux(PORT1, 0U, kPORT_MuxAlt2);
+    PORT_SetPinMux(BOARD_INITPINS_ESP_RX_PORT, BOARD_INITPINS_ESP_RX_PIN, kPORT_MuxAlt2);
 
     PORT1->PCR[0] = ((PORT1->PCR[0] &
                       /* Mask bits to zero which are setting */
@@ -228,7 +231,7 @@ void BOARD_InitPins(void)
                      | PORT_PCR_IBE(PCR_IBE_ibe1));
 
     /* PORT1_1 (pin C5) is configured as FC3_P1 */
-    PORT_SetPinMux(PORT1, 1U, kPORT_MuxAlt2);
+    PORT_SetPinMux(BOARD_INITPINS_ESP_TX_PORT, BOARD_INITPINS_ESP_TX_PIN, kPORT_MuxAlt2);
 
     PORT1->PCR[1] = ((PORT1->PCR[1] &
                       /* Mask bits to zero which are setting */
