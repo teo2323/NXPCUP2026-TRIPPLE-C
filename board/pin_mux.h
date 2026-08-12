@@ -66,6 +66,24 @@ void BOARD_InitBootPins(void);
 #define BOARD_INITPINS_GPIO_26_PIN_MASK (1U << 26U)      /*!<@brief PORT pin mask */
                                                          /* @} */
 
+/*! @name PORT1_0 (coord C6), P1_0/J5[6]/J2[17]
+  @{ */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITPINS_ESP_RX_PORT PORT1               /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_ESP_RX_PIN 0U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_ESP_RX_PIN_MASK (1U << 0U)      /*!<@brief PORT pin mask */
+                                                       /* @} */
+
+/*! @name PORT1_1 (coord C5), P1_1/J5[5]/J2[15]
+  @{ */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITPINS_ESP_TX_PORT PORT1               /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_ESP_TX_PIN 1U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_ESP_TX_PIN_MASK (1U << 1U)      /*!<@brief PORT pin mask */
+                                                       /* @} */
+
 /*! @name PORT0_28 (coord E8), P0_28/J2[2]
   @{ */
 
