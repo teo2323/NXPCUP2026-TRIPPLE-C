@@ -2,8 +2,12 @@
 #define CONFIG_H
 
 // Steering control coefficients
-#define STEERING_P_RIGHT      0.5  //poate fi schimbata
-#define STEERING_P_LEFT       0.5
+#define STEERING_P_RIGHT      0.4  //poate fi schimbata
+#define STEERING_P_LEFT       0.4
+
+// Steering derivative gains (dampen rapid angle changes)
+#define STEERING_D_RIGHT      0.2
+#define STEERING_D_LEFT       0.2
 
 // Physical steering limits
 #define STEERING_LIMIT_RIGHT  45
