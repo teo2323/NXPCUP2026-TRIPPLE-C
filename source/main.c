@@ -54,8 +54,6 @@ int main(void)
     double last_steering_angle = 0.0;
     double previous_error      = 0.0;  // D term: stores last frame's angle
 
-    double last_steering_angle = 0.0;
-
     Wifi_Init(); // Inițializează modulul Wi-Fi
     while (1)
     {
