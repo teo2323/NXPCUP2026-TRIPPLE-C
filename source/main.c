@@ -54,12 +54,7 @@ int main(void)
     double last_steering_angle = 0.0;
     double previous_error      = 0.0;  // D term: stores last frame's angle
 
-<<<<<<< HEAD
-
-
-=======
     Wifi_Init(); // Inițializează modulul Wi-Fi
->>>>>>> 118116a3a93a6c8b974b50765c2215e5e8d80321
     while (1)
     {
         Wifi_Process_Rx(); // Procesează datele primite de la modulul Wi-Fi
@@ -120,17 +115,12 @@ int main(void)
 
                     double slope = visible_line->inverse_slope;
 
-<<<<<<< HEAD
                     /* Steer with maximum angle to left or right based on slope direction:
                      * Positive slope (tilts right) -> steer max RIGHT (+45 deg)
                      * Negative slope (tilts left)  -> steer max LEFT  (-45 deg) */
-                    double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT : (double)STEERING_LIMIT_RIGHT ;
-
                     // Foarte probabil robotul detecteaza mereu o singura linie si trage mereu de volan in partea opusa
-=======
                     int slope_x100 = (int)(slope * 100.0);
                     int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
->>>>>>> 118116a3a93a6c8b974b50765c2215e5e8d80321
 
                     if (det.left_line_present) {
                         PRINTF("Linia stanga prezenta!\r\n");
