@@ -46,25 +46,37 @@ int main(void)
     pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
     pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active automated mode
 
-    /* 1. Continuous H-bridge drive speed */
-    HbridgeSpeed(&g_hbridge, 70, 70);
+    /* 1. Continuous H-bridge drive speed (Dynamic via Web Server) */
+    int current_speed = g_engine_enabled ? (int)g_motor_speed : 0;
+    HbridgeSpeed(&g_hbridge, current_speed, current_speed);
     Steer(0.0);
     //TestServo();
 
     double last_steering_angle = 0.0;
     double previous_error      = 0.0;  // D term: stores last frame's angle
 
-<<<<<<< HEAD
-
-
-=======
     Wifi_Init(); // Inițializează modulul Wi-Fi
->>>>>>> 118116a3a93a6c8b974b50765c2215e5e8d80321
+
+    static bool last_printed_engine_state = false;
+
     while (1)
     {
         Wifi_Process_Rx(); // Procesează datele primite de la modulul Wi-Fi
-        /* Maintain continuous motor speed rate */
-        HbridgeSpeed(&g_hbridge, 70, 70);
+        
+        /* Maintain continuous dynamic motor speed rate */
+        if (g_engine_enabled != last_printed_engine_state) {
+            last_printed_engine_state = g_engine_enabled;
+            if (g_engine_enabled) {
+                PRINTF("\r\n[NXP CONSOLA] ▶️ MOTOARELE AU FOST PORNITE (Viteza aplicata: %d%%)\r\n", (int)g_motor_speed);
+            } else {
+                PRINTF("\r\n[NXP CONSOLA] ⏸️ MOTOARELE AU FOST OPRITE (Viteza aplicata: 0%%)\r\n");
+            }
+        }
+
+        current_speed = g_engine_enabled ? (int)g_motor_speed : 0;
+        HbridgeSpeed(&g_hbridge, current_speed, current_speed);
+
+
 
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
             dual_line_detection_result_t det;
@@ -120,17 +132,8 @@ int main(void)
 
                     double slope = visible_line->inverse_slope;
 
-<<<<<<< HEAD
-                    /* Steer with maximum angle to left or right based on slope direction:
-                     * Positive slope (tilts right) -> steer max RIGHT (+45 deg)
-                     * Negative slope (tilts left)  -> steer max LEFT  (-45 deg) */
-                    double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT : (double)STEERING_LIMIT_RIGHT ;
-
-                    // Foarte probabil robotul detecteaza mereu o singura linie si trage mereu de volan in partea opusa
-=======
                     int slope_x100 = (int)(slope * 100.0);
                     int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
->>>>>>> 118116a3a93a6c8b974b50765c2215e5e8d80321
 
                     if (det.left_line_present) {
                         PRINTF("Linia stanga prezenta!\r\n");
