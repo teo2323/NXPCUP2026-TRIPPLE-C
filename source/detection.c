@@ -440,6 +440,54 @@ bool detection_detect_turn_track(const uint16_t *raw_vectors,
     return true;
 }
 
+bool detection_detect_double_horizontal_lines(const uint16_t *raw_vectors, 
+                                             size_t num_vectors, 
+                                             uint16_t y_tolerance)
+{
+    if (raw_vectors == NULL || num_vectors < 2) return false;
+
+    pixy_vector_t parsed[16];
+    size_t parsed_count = detection_parse_vectors(raw_vectors, num_vectors, parsed, 16);
+
+    pixy_vector_t horiz[16];
+    size_t horiz_count = 0;
+
+    /* Filter for horizontal vectors (|dx| > |dy| and |dx| >= DETECTION_MIN_DX_HORIZONTAL) */
+    for (size_t i = 0; i < parsed_count; i++) {
+        int dx = (int)parsed[i].x1 - (int)parsed[i].x0;
+        int dy = (int)parsed[i].y1 - (int)parsed[i].y0;
+        int abs_dx = dx < 0 ? -dx : dx;
+        int abs_dy = dy < 0 ? -dy : dy;
+
+        if (abs_dx > abs_dy && abs_dx >= (int)DETECTION_MIN_DX_HORIZONTAL) {
+            horiz[horiz_count++] = parsed[i];
+        }
+    }
+
+    if (horiz_count < 2) return false;
+
+    /* Check for any pair of horizontal vectors on the same horizontal line */
+    for (size_t i = 0; i < horiz_count; i++) {
+        double y_mid1 = ((double)horiz[i].y0 + (double)horiz[i].y1) / 2.0;
+        double x_mid1 = ((double)horiz[i].x0 + (double)horiz[i].x1) / 2.0;
+
+        for (size_t j = i + 1; j < horiz_count; j++) {
+            double y_mid2 = ((double)horiz[j].y0 + (double)horiz[j].y1) / 2.0;
+            double x_mid2 = ((double)horiz[j].x0 + (double)horiz[j].x1) / 2.0;
+
+            double dy_diff = fabs(y_mid1 - y_mid2);
+            double dx_diff = fabs(x_mid1 - x_mid2);
+
+            /* Both vectors must be on similar Y level and separated in X */
+            if (dy_diff <= (double)y_tolerance && dx_diff >= 10.0) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 void detection_debug_vectors(const uint16_t *raw_vectors, size_t num_vectors)
 {
     PRINTF("\r\n=== [Detection Debug] Raw vectors: %u ===\r\n", (unsigned)num_vectors);

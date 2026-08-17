@@ -146,6 +146,10 @@ bool detection_detect_turn_track(const uint16_t *raw_vectors,
                                  size_t num_vectors,
                                  turn_track_result_t *result);
 
+bool detection_detect_double_horizontal_lines(const uint16_t *raw_vectors,
+                                             size_t num_vectors,
+                                             uint16_t y_tolerance);
+
 void detection_debug_vectors(const uint16_t *raw_vectors, size_t num_vectors);
 
 #ifdef __cplusplus

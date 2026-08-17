@@ -54,6 +54,21 @@ int main(void)
     double last_steering_angle = 0.0;
     double previous_error      = 0.0;  // D term: stores last frame's angle
 
+    typedef enum {
+        DOUBLE_LINE_STATE_SEARCH_1 = 0,
+        DOUBLE_LINE_STATE_ON_LINE_1,
+        DOUBLE_LINE_STATE_SEARCH_2,
+        DOUBLE_LINE_STATE_ON_LINE_2,
+        DOUBLE_LINE_STATE_STOPPED
+    } double_line_state_t;
+
+    double_line_state_t double_line_state = DOUBLE_LINE_STATE_SEARCH_1;
+    uint8_t detect_consecutive_count = 0;
+    uint8_t missing_consecutive_count = 0;
+
+    #define MIN_CONFIRM_FRAMES 3
+    #define MIN_MISSING_FRAMES 3
+
     Wifi_Init(); // Inițializează modulul Wi-Fi
     while (1)
     {
@@ -62,6 +77,81 @@ int main(void)
         HbridgeSpeed(&g_hbridge, 70, 70);
 
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
+            bool double_line_detected = detection_detect_double_horizontal_lines(vectors, num_vectors, 6);
+
+            switch (double_line_state) {
+                case DOUBLE_LINE_STATE_SEARCH_1:
+                    if (double_line_detected) {
+                        if (++detect_consecutive_count >= MIN_CONFIRM_FRAMES) {
+                            double_line_state = DOUBLE_LINE_STATE_ON_LINE_1;
+                            missing_consecutive_count = 0;
+                            pixy_set_led(&cam1, 255, 255, 0); // Yellow LED: 1st double line detected
+                            PRINTF("--- Double horizontal line #1 DETECTED ---\r\n");
+                        }
+                    } else {
+                        detect_consecutive_count = 0;
+                    }
+                    break;
+
+                case DOUBLE_LINE_STATE_ON_LINE_1:
+                    if (!double_line_detected) {
+                        if (++missing_consecutive_count >= MIN_MISSING_FRAMES) {
+                            double_line_state = DOUBLE_LINE_STATE_SEARCH_2;
+                            detect_consecutive_count = 0;
+                            pixy_set_led(&cam1, 0, 255, 0); // Green LED: searching for 2nd double line
+                            PRINTF("--- Double horizontal line #1 PASSED ---\r\n");
+                        }
+                    } else {
+                        missing_consecutive_count = 0;
+                    }
+                    break;
+
+                case DOUBLE_LINE_STATE_SEARCH_2:
+                    if (double_line_detected) {
+                        if (++detect_consecutive_count >= MIN_CONFIRM_FRAMES) {
+                            double_line_state = DOUBLE_LINE_STATE_ON_LINE_2;
+                            missing_consecutive_count = 0;
+                            pixy_set_led(&cam1, 255, 255, 0); // Yellow LED: 2nd double line detected
+                            PRINTF("--- Double horizontal line #2 DETECTED ---\r\n");
+                        }
+                    } else {
+                        detect_consecutive_count = 0;
+                    }
+                    break;
+
+                case DOUBLE_LINE_STATE_ON_LINE_2:
+                    if (!double_line_detected) {
+                        if (++missing_consecutive_count >= MIN_MISSING_FRAMES) {
+                            PRINTF("--- Double horizontal line #2 PASSED! Waiting 1s before stopping... ---\r\n");
+
+                            /* Drive straight for 1 second */
+                            Steer(0.0);
+                            HbridgeSpeed(&g_hbridge, 70, 70);
+                            SDK_DelayAtLeastUs(1000000U, SystemCoreClock);
+
+                            /* Stop engines */
+                            HbridgeBrake(&g_hbridge);
+                            pixy_set_led(&cam1, 255, 0, 0); // Red LED: stopped
+                            PRINTF("--- ENGINES STOPPED ---\r\n");
+                            double_line_state = DOUBLE_LINE_STATE_STOPPED;
+                        }
+                    } else {
+                        missing_consecutive_count = 0;
+                    }
+                    break;
+
+                case DOUBLE_LINE_STATE_STOPPED:
+                    HbridgeBrake(&g_hbridge);
+                    break;
+            }
+
+            if (double_line_state == DOUBLE_LINE_STATE_STOPPED) {
+                while (1) {
+                    Wifi_Process_Rx();
+                    HbridgeBrake(&g_hbridge);
+                }
+            }
+
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
 
