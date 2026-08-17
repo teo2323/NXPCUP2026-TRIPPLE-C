@@ -263,9 +263,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
     function saveAllPID() {
       saveParam('STEERING_P_RIGHT', 'P_RIGHT');
-      setTimeout(() => saveParam('STEERING_P_LEFT', 'P_LEFT'), 150);
-      setTimeout(() => saveParam('STEERING_D_RIGHT', 'D_RIGHT'), 300);
-      setTimeout(() => saveParam('STEERING_D_LEFT', 'D_LEFT'), 450);
+      setTimeout(() => saveParam('STEERING_P_LEFT', 'P_LEFT'), 250);
+      setTimeout(() => saveParam('STEERING_D_RIGHT', 'D_RIGHT'), 500);
+      setTimeout(() => saveParam('STEERING_D_LEFT', 'D_LEFT'), 750);
     }
     window.onload = function() {
       fetch('/api/params')
@@ -365,6 +365,7 @@ void handleSetParam() {
     // Format message to NXP board: "NUME_PARAMETRU = VAL\n"
     String msg = param + " = " + String(val, 4) + "\n";
     Serial2.print(msg);
+    Serial2.flush();
 
     Serial.print("Transmis catre NXP: ");
     Serial.print(msg);
@@ -415,8 +416,22 @@ void setup() {
     sendParamsToNXP();
 }
 
+/* Send a placeholder heartbeat message to NXP every 10 seconds */
+void sendHeartbeat() {
+    static unsigned long lastHeartbeatTime = 0;
+    unsigned long now = millis();
+    if (now - lastHeartbeatTime >= 10000UL) {
+        lastHeartbeatTime = now;
+        Serial2.print("HEARTBEAT = 1\n");
+        Serial2.flush();
+        Serial.println("[ESP32 -> NXP] Placeholder heartbeat message sent (every 10s)");
+    }
+}
+
 void loop() {
     server.handleClient();
+
+    sendHeartbeat();
 
     /* Afisare debug in consola USB cand NXP trimite raspuns (ex: ACK) pe Serial2 */
     while (Serial2.available()) {

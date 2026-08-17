@@ -71,6 +71,7 @@ int main(void)
             } else {
                 PRINTF("\r\n[NXP CONSOLA] ⏸️ MOTOARELE AU FOST OPRITE (Viteza aplicata: 0%%)\r\n");
             }
+            fflush(stdout);
         }
 
         current_speed = g_engine_enabled ? (int)g_motor_speed : 0;
@@ -79,6 +80,7 @@ int main(void)
 
 
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
+            Wifi_Process_Rx();
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
 
@@ -109,7 +111,7 @@ int main(void)
                     Steer(steer_angle);
                     last_steering_angle = steer_angle;
 
-                    PRINTF("Vede ambii vectori\n");
+                    //PRINTF("Vede ambii vectori\n");
                 }
                 else {
                     /* Single line detected case (lines 76-87 commented out):
@@ -135,17 +137,17 @@ int main(void)
                     int slope_x100 = (int)(slope * 100.0);
                     int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
 
-                    if (det.left_line_present) {
-                        PRINTF("Linia stanga prezenta!\r\n");
-                    } else {
-                        PRINTF("Linia dreapta prezenta!\r\n");
-                    }
+                    // if (det.left_line_present) {
+                    //     PRINTF("Linia stanga prezenta!\r\n");
+                    // } else {
+                    //     PRINTF("Linia dreapta prezenta!\r\n");
+                    // }
 
-                    if (slope < 0 && slope_x100 / 100 == 0) {
-                        PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
-                    } else {
-                        PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
-                    }
+                    // if (slope < 0 && slope_x100 / 100 == 0) {
+                    //     PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
+                    // } else {
+                    //     PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
+                    // }
 
                     
                         double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT : (double)STEERING_LIMIT_RIGHT;
@@ -179,7 +181,7 @@ int main(void)
                     // PRINTF("[Turn] Horizontal vector detected | center_x: %d | dir: %s | Steer: %d deg\r\n",
                            //(int)turn.center_x, turn.turn_left ? "LEFT" : "RIGHT", (int)steer_angle);
 
-                    PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
+                    //PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
                 }
                 else {
                     /* No horizontal vector either -> gently decay angle toward straight */
@@ -189,7 +191,12 @@ int main(void)
                     }
                     Steer(last_steering_angle);
 
-                    PRINTF("Nu am gasit niciun vector, ma pis pe ea de detectie\r\n");
+                    static uint32_t no_vector_counter = 0;
+                    if (++no_vector_counter >= 100U) {
+                        no_vector_counter = 0U;
+                        //PRINTF("Nu am gasit niciun vector, caut in continuare...\r\n");
+                        fflush(stdout);
+                    }
 
                     // PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
                 }

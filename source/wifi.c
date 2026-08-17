@@ -36,6 +36,7 @@ static void LPUART_SendChar(char c)
 void Wifi_Init(void)
 {
     PRINTF("[Wi-Fi] Initializat receptie comenzi tuning PID & Control Viteza\r\n");
+    fflush(stdout);
 }
 
 void Wifi_SendString(const char *str)
@@ -78,26 +79,31 @@ void Wifi_ParseCommand(const char *cmd)
     if (strcmp(key, "STEERING_P_RIGHT") == 0) {
         g_steering_p_right = (double)val;
         PRINTF("[PID Update] STEERING_P_RIGHT setat la %d.%03d\r\n", val_i, val_f);
+        fflush(stdout);
         Wifi_SendString("ACK: STEERING_P_RIGHT = ");
     }
     else if (strcmp(key, "STEERING_P_LEFT") == 0) {
         g_steering_p_left = (double)val;
         PRINTF("[PID Update] STEERING_P_LEFT setat la %d.%03d\r\n", val_i, val_f);
+        fflush(stdout);
         Wifi_SendString("ACK: STEERING_P_LEFT = ");
     }
     else if (strcmp(key, "STEERING_D_RIGHT") == 0) {
         g_steering_d_right = (double)val;
         PRINTF("[PID Update] STEERING_D_RIGHT setat la %d.%03d\r\n", val_i, val_f);
+        fflush(stdout);
         Wifi_SendString("ACK: STEERING_D_RIGHT = ");
     }
     else if (strcmp(key, "STEERING_D_LEFT") == 0) {
         g_steering_d_left = (double)val;
         PRINTF("[PID Update] STEERING_D_LEFT setat la %d.%03d\r\n", val_i, val_f);
+        fflush(stdout);
         Wifi_SendString("ACK: STEERING_D_LEFT = ");
     }
     else if (strcmp(key, "MOTOR_SPEED") == 0) {
         g_motor_speed = (double)val;
         PRINTF("[MOTOARE] Viteza actualizata la %d%%\r\n", (int)g_motor_speed);
+        fflush(stdout);
         Wifi_SendString("ACK: MOTOR_SPEED = ");
     }
     else if (strcmp(key, "ENGINE_ENABLED") == 0) {
@@ -107,6 +113,7 @@ void Wifi_ParseCommand(const char *cmd)
         } else {
             PRINTF("[MOTOARE] Comanda Web: MOTOARE OPRITE\r\n");
         }
+        fflush(stdout);
         Wifi_SendString("ACK: ENGINE_ENABLED = ");
     }
     else if (strcmp(key, "EMERGENCY_STOP") == 0) {
@@ -114,11 +121,19 @@ void Wifi_ParseCommand(const char *cmd)
         HbridgeSpeed(&g_hbridge, 0, 0);
         Steer(0.0);
         PRINTF("[MOTOARE] EMERGENCY STOP ACTIVAT! Motoare oprite instant!\r\n");
+        fflush(stdout);
         Wifi_SendString("ACK: EMERGENCY_STOP = 1\r\n");
+        return;
+    }
+    else if (strcmp(key, "HEARTBEAT") == 0) {
+        PRINTF("[Wi-Fi Heartbeat] Mesaj placeholder primit de la ESP32 (Interval: 10s)\r\n");
+        fflush(stdout);
+        Wifi_SendString("ACK: HEARTBEAT = 1\r\n");
         return;
     }
     else {
         PRINTF("[PID Update] Parametru necunoscut: '%s'\r\n", key);
+        fflush(stdout);
         return;
     }
 
@@ -139,10 +154,13 @@ void Wifi_Process_Rx(void)
         LPUART_ClearStatusFlags(LP_FLEXCOMM3_PERIPHERAL,
                                 kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag |
                                 kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag);
+        // Reset buffer index on line error/overrun to prevent corrupted string accumulation
+        rx_idx = 0U;
     }
 
     // 2. Citire caractere din buffer-ul hardware
-    while (LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL) & kLPUART_RxDataRegFullFlag)
+    while (((LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL) & kLPUART_RxDataRegFullFlag) != 0U) ||
+           (LPUART_GetRxFifoCount(LP_FLEXCOMM3_PERIPHERAL) > 0U))
     {
         char c = (char)LPUART_ReadByte(LP_FLEXCOMM3_PERIPHERAL);
 
@@ -152,13 +170,22 @@ void Wifi_Process_Rx(void)
             {
                 rx_buf[rx_idx] = '\0';
                 PRINTF("Mesaj receptionat: %s\r\n", (const char *)rx_buf);
+                fflush(stdout);
                 Wifi_ParseCommand((const char *)rx_buf);
                 rx_idx = 0U;
             }
         }
-        else if ((uint8_t)c >= 32U && rx_idx < (uint8_t)(sizeof(rx_buf) - 1U))
+        else if ((uint8_t)c >= 32U)
         {
-            rx_buf[rx_idx++] = c;
+            if (rx_idx < (uint8_t)(sizeof(rx_buf) - 1U))
+            {
+                rx_buf[rx_idx++] = c;
+            }
+            else
+            {
+                // Buffer overflow protection: reset on overflow to avoid string mangling
+                rx_idx = 0U;
+            }
         }
     }
 }

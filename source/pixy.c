@@ -1,6 +1,7 @@
 #include "pixy.h"
 #include "peripherals.h"
 #include "fsl_lpi2c_edma.h"
+#include "wifi.h"
 #include <stdbool.h>
 
 static volatile bool     transferDone;
@@ -47,7 +48,18 @@ static status_t pixy_send(pixy_t *cam, const uint8_t *cmd, size_t len)
     };
     status_t s = LPI2C_MasterTransferEDMA(cam->instance, &cam->edmaHandle, &xfer);
     if (s != kStatus_Success) return s;
-    while (!transferDone) {}
+
+    uint32_t timeout = 500000U;
+    while (!transferDone && --timeout > 0U)
+    {
+        Wifi_Process_Rx();
+    }
+    if (timeout == 0U)
+    {
+        LPI2C_MasterTransferAbortEDMA(cam->instance, &cam->edmaHandle);
+        return kStatus_LPI2C_Timeout;
+    }
+
     return transferStatus;
 }
 
@@ -65,7 +77,18 @@ static status_t pixy_recv(pixy_t *cam, uint8_t *buf, size_t len)
     };
     status_t s = LPI2C_MasterTransferEDMA(cam->instance, &cam->edmaHandle, &xfer);
     if (s != kStatus_Success) return s;
-    while (!transferDone) {}
+
+    uint32_t timeout = 500000U;
+    while (!transferDone && --timeout > 0U)
+    {
+        Wifi_Process_Rx();
+    }
+    if (timeout == 0U)
+    {
+        LPI2C_MasterTransferAbortEDMA(cam->instance, &cam->edmaHandle);
+        return kStatus_LPI2C_Timeout;
+    }
+
     return transferStatus;
 }
 
