@@ -114,20 +114,6 @@ int main(void)
                     //PRINTF("Vede ambii vectori\n");
                 }
                 else {
-                    /* Single line detected case (lines 76-87 commented out):
-                    else if (det.left_line_present && !det.right_line_present) {
-                        // Case 2: Only LEFT track line detected -> find center by adding 25px
-                        double track_center_x = det.left_line.bottom_x + 25.0;
-                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
-                        raw_steering_angle    = (-1.0 * det.left_line.inverse_slope) + (center_offset * 0.25);
-                    }
-                    else if (!det.left_line_present && det.right_line_present) {
-                        // Case 3: Only RIGHT track line detected -> find center by removing 25px
-                        double track_center_x = det.right_line.bottom_x - 25.0;
-                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
-                        raw_steering_angle    = (-1.0 * det.right_line.inverse_slope) + (center_offset * 0.25);
-                    }
-                    */
 
                     /* Find slope of the visible track line */
                     const line_track_t *visible_line = det.left_line_present ? &det.left_line : &det.right_line;
@@ -137,17 +123,17 @@ int main(void)
                     int slope_x100 = (int)(slope * 100.0);
                     int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
 
-                    // if (det.left_line_present) {
-                    //     PRINTF("Linia stanga prezenta!\r\n");
-                    // } else {
-                    //     PRINTF("Linia dreapta prezenta!\r\n");
-                    // }
+                    if (det.left_line_present) {
+                        PRINTF("Linia stanga prezenta!\r\n");
+                    } else {
+                        PRINTF("Linia dreapta prezenta!\r\n");
+                    }
 
-                    // if (slope < 0 && slope_x100 / 100 == 0) {
-                    //     PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
-                    // } else {
-                    //     PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
-                    // }
+                    if (slope < 0 && slope_x100 / 100 == 0) {
+                        PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
+                    } else {
+                        PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
+                    }
 
                     
                         double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT : (double)STEERING_LIMIT_RIGHT;
@@ -178,10 +164,10 @@ int main(void)
                     Steer(steer_angle);
                     last_steering_angle = steer_angle;
 
-                    // PRINTF("[Turn] Horizontal vector detected | center_x: %d | dir: %s | Steer: %d deg\r\n",
-                           //(int)turn.center_x, turn.turn_left ? "LEFT" : "RIGHT", (int)steer_angle);
+                    PRINTF("[Turn] Horizontal vector detected | center_x: %d | dir: %s | Steer: %d deg\r\n",
+                           (int)turn.center_x, turn.turn_left ? "LEFT" : "RIGHT", (int)steer_angle);
 
-                    //PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
+                    PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
                 }
                 else {
                     /* No horizontal vector either -> gently decay angle toward straight */
@@ -194,11 +180,11 @@ int main(void)
                     static uint32_t no_vector_counter = 0;
                     if (++no_vector_counter >= 100U) {
                         no_vector_counter = 0U;
-                        //PRINTF("Nu am gasit niciun vector, caut in continuare...\r\n");
+                        PRINTF("Nu am gasit niciun vector, caut in continuare...\r\n");
                         fflush(stdout);
                     }
 
-                    // PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
+                    PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
                 }
             }
         }
