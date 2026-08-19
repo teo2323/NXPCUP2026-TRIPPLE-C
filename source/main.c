@@ -66,12 +66,6 @@ int main(void)
         /* Maintain continuous dynamic motor speed rate */
         if (g_engine_enabled != last_printed_engine_state) {
             last_printed_engine_state = g_engine_enabled;
-            if (g_engine_enabled) {
-                PRINTF("\r\n[NXP CONSOLA] ▶️ MOTOARELE AU FOST PORNITE (Viteza aplicata: %d%%)\r\n", (int)g_motor_speed);
-            } else {
-                PRINTF("\r\n[NXP CONSOLA] ⏸️ MOTOARELE AU FOST OPRITE (Viteza aplicata: 0%%)\r\n");
-            }
-            fflush(stdout);
         }
 
         current_speed = g_engine_enabled ? (int)g_motor_speed : 0;
@@ -123,17 +117,17 @@ int main(void)
                     int slope_x100 = (int)(slope * 100.0);
                     int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
 
-                    if (det.left_line_present) {
-                        PRINTF("Linia stanga prezenta!\r\n");
-                    } else {
-                        PRINTF("Linia dreapta prezenta!\r\n");
-                    }
+                    // if (det.left_line_present) {
+                    //     PRINTF("Linia stanga prezenta!\r\n");
+                    // } else {
+                    //     PRINTF("Linia dreapta prezenta!\r\n");
+                    // }
 
-                    if (slope < 0 && slope_x100 / 100 == 0) {
-                        PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
-                    } else {
-                        PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
-                    }
+                    // if (slope < 0 && slope_x100 / 100 == 0) {
+                    //     PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
+                    // } else {
+                    //     PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
+                    // }
 
                     
                         double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT : (double)STEERING_LIMIT_RIGHT;
@@ -164,10 +158,10 @@ int main(void)
                     Steer(steer_angle);
                     last_steering_angle = steer_angle;
 
-                    PRINTF("[Turn] Horizontal vector detected | center_x: %d | dir: %s | Steer: %d deg\r\n",
-                           (int)turn.center_x, turn.turn_left ? "LEFT" : "RIGHT", (int)steer_angle);
+                    // PRINTF("[Turn] Horizontal vector detected | center_x: %d | dir: %s | Steer: %d deg\r\n",
+                    //        (int)turn.center_x, turn.turn_left ? "LEFT" : "RIGHT", (int)steer_angle);
 
-                    PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
+                    // PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
                 }
                 else {
                     /* No horizontal vector either -> gently decay angle toward straight */
@@ -177,15 +171,52 @@ int main(void)
                     }
                     Steer(last_steering_angle);
 
-                    static uint32_t no_vector_counter = 0;
-                    if (++no_vector_counter >= 100U) {
-                        no_vector_counter = 0U;
-                        PRINTF("Nu am gasit niciun vector, caut in continuare...\r\n");
-                        fflush(stdout);
-                    }
+                    // static uint32_t no_vector_counter = 0;
+                    // if (++no_vector_counter >= 100U) {
+                    //     no_vector_counter = 0U;
+                    //     PRINTF("Nu am gasit niciun vector, caut in continuare...\r\n");
+                    //     fflush(stdout);
+                    // }
 
-                    PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
+                    // PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
                 }
+            }
+
+            /* Send Telemetry to ESP32 over UART at 10 Hz rate (~every 6 camera frames at 60FPS) */
+            static uint32_t telemetry_tick = 0U;
+            if (++telemetry_tick >= 6U)
+            {
+                telemetry_tick = 0U;
+
+                uint8_t line_cnt = 0U;
+                const char *which_str = "NONE";
+
+                if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present))
+                {
+                    if (det.both_lines_present) {
+                        line_cnt = 2U;
+                        which_str = "BOTH";
+                    } else if (det.left_line_present) {
+                        line_cnt = 1U;
+                        which_str = "LEFT";
+                    } else {
+                        line_cnt = 1U;
+                        which_str = "RIGHT";
+                    }
+                }
+                else
+                {
+                    turn_track_result_t turn_t;
+                    if (detection_detect_turn_track(vectors, num_vectors, &turn_t)) {
+                        line_cnt = 0U;
+                        which_str = turn_t.turn_left ? "TURN_LEFT" : "TURN_RIGHT";
+                    } else {
+                        line_cnt = 0U;
+                        which_str = "NONE";
+                    }
+                }
+
+                Wifi_SendTelemetry(line_cnt, which_str, num_vectors, last_steering_angle, (double)current_speed, g_engine_enabled, 7.40);
             }
         }
     }

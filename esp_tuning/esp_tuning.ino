@@ -21,6 +21,94 @@ float d_left        = 0.20f;
 float motor_speed   = 70.0f;
 bool engine_enabled = false;
 
+/* Telemetry Data Structures & Ring Buffer */
+struct TelemetryFrame {
+    unsigned long id;
+    unsigned long timestamp;
+    uint8_t lineCount;
+    char whichLines[16];
+    uint16_t numVectors;
+    float steeringAngle;
+    float motorSpeed;
+    bool engineEnabled;
+    float batteryVolts;
+};
+
+#define TELEMETRY_BUFFER_SIZE 150
+TelemetryFrame telemetryRingBuffer[TELEMETRY_BUFFER_SIZE];
+int telemetryHead = 0;
+int telemetryCount = 0;
+unsigned long telemetrySeqCounter = 0;
+
+void processTelemetryLine(const String& line) {
+    // Format: TELEM:lines=2|which=BOTH|num_vec=3|steer=-12.50|speed=70|eng=1|batt=7.40
+    if (!line.startsWith("TELEM:")) return;
+
+    TelemetryFrame frame;
+    frame.id = ++telemetrySeqCounter;
+    frame.timestamp = millis();
+    frame.lineCount = 0;
+    strcpy(frame.whichLines, "NONE");
+    frame.numVectors = 0;
+    frame.steeringAngle = 0.0f;
+    frame.motorSpeed = 0.0f;
+    frame.engineEnabled = false;
+    frame.batteryVolts = 7.40f;
+
+    String content = line.substring(6);
+    int start = 0;
+    while (start < content.length()) {
+        int delim = content.indexOf('|', start);
+        if (delim == -1) delim = content.length();
+        String token = content.substring(start, delim);
+        token.trim();
+        start = delim + 1;
+
+        int eq = token.indexOf('=');
+        if (eq != -1) {
+            String key = token.substring(0, eq);
+            String val = token.substring(eq + 1);
+            if (key == "lines") frame.lineCount = (uint8_t)val.toInt();
+            else if (key == "which") strncpy(frame.whichLines, val.c_str(), sizeof(frame.whichLines) - 1);
+            else if (key == "num_vec") frame.numVectors = (uint16_t)val.toInt();
+            else if (key == "steer") frame.steeringAngle = val.toFloat();
+            else if (key == "speed") frame.motorSpeed = val.toFloat();
+            else if (key == "eng") frame.engineEnabled = (val.toInt() > 0);
+            else if (key == "batt") frame.batteryVolts = val.toFloat();
+        }
+    }
+
+    telemetryRingBuffer[telemetryHead] = frame;
+    telemetryHead = (telemetryHead + 1) % TELEMETRY_BUFFER_SIZE;
+    if (telemetryCount < TELEMETRY_BUFFER_SIZE) {
+        telemetryCount++;
+    }
+}
+
+void processSerial2Input() {
+    static String rxLine = "";
+    while (Serial2.available()) {
+        char c = (char)Serial2.read();
+        Serial.write(c); // Forward byte to USB serial debug
+
+        if (c == '\n' || c == '\r') {
+            rxLine.trim();
+            if (rxLine.length() > 0) {
+                if (rxLine.startsWith("TELEM:")) {
+                    processTelemetryLine(rxLine);
+                }
+                rxLine = "";
+            }
+        } else {
+            if (rxLine.length() < 256) {
+                rxLine += c;
+            } else {
+                rxLine = ""; // buffer overflow safeguard
+            }
+        }
+    }
+}
+
 /* Embedded HTML Dashboard */
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -28,7 +116,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NXP Robot - PID & Engine Control Panel</title>
+  <title>NXP Robot - PID & Telemetrie Control Panel</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -45,7 +133,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
-    .container { width: 100%; max-width: 560px; }
+    .container { width: 100%; max-width: 620px; }
     .header { text-align: center; margin-bottom: 20px; }
     .header h1 { font-size: 1.75rem; color: var(--accent); margin-bottom: 6px; }
     .header p { color: var(--muted); font-size: 0.9rem; }
@@ -80,6 +168,29 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .btn:hover { background: var(--accent-hover); color: #fff; }
     .btn-all { width: 100%; padding: 12px; font-size: 1rem; margin-top: 10px; background: #0284c7; color: #fff; }
     
+    /* Telemetry & Terminal UI Styles */
+    .term-box { background: #090d16; border: 1px solid var(--border); border-radius: 8px; font-family: monospace; font-size: 0.82rem; height: 230px; overflow-y: auto; padding: 10px; color: #38bdf8; margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+    .term-line { white-space: pre-wrap; word-break: break-all; }
+    .term-line .ts { color: #64748b; margin-right: 6px; }
+    .term-line .tag { color: #e2e8f0; font-weight: bold; }
+    .term-line .val { color: #4ade80; }
+    .term-line .warn { color: #f59e0b; }
+    .term-line .err { color: #ef4444; }
+    .term-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: 8px; }
+    .term-controls-left { display: flex; gap: 8px; align-items: center; font-size: 0.85rem; color: var(--muted); }
+    .btn-sm { padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; }
+    .btn-json { background: #10b981; color: #042f2e; font-weight: bold; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+    .btn-json:hover { background: #059669; color: #fff; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .metric-box { background: #090d16; border: 1px solid var(--border); border-radius: 8px; padding: 10px; text-align: center; }
+    .metric-title { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
+    .metric-val { font-size: 1.15rem; font-weight: bold; color: var(--accent); font-family: monospace; }
+    .line-pill { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; }
+    .pill-both { background: #14532d; color: #4ade80; border: 1px solid #22c55e; }
+    .pill-single { background: #78350f; color: #fde047; border: 1px solid #f59e0b; }
+    .pill-turn { background: #0e7490; color: #67e8f9; border: 1px solid #06b6d4; }
+    .pill-none { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; }
+
     #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--success); color: #052e16; padding: 12px 24px; border-radius: 8px; font-weight: bold; opacity: 0; transition: opacity 0.3s; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 1000; }
     #toast.show { opacity: 1; }
     #toast.danger-toast { background: var(--danger); color: #fff; }
@@ -89,12 +200,53 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <div class="container">
     <div class="header">
       <h1>🏎️ NXP Robot Control Panel</h1>
-      <p>Tuning PID & Control Viteză Graduală (Port 80)</p>
+      <p>Tuning PID & Telemetrie Consola (Port 80)</p>
       <div class="badge">AP: ESP32_Robot_AP2 | http://esp32_2.local</div>
     </div>
 
     <!-- Emergency Stop Button -->
     <button class="estop-btn" onclick="triggerEmergencyStop()">🚨 FRÂNĂ URGENȚĂ (E-STOP)</button>
+
+    <!-- Telemetry & Terminal Simulation Card -->
+    <div class="card">
+      <div class="card-title">
+        <span>📡 Telemetrie & Consola Terminal</span>
+        <button class="btn-json" onclick="downloadJSONHistory()">📥 Descarcă JSON</button>
+      </div>
+
+      <div class="grid-2">
+        <div class="metric-box">
+          <div class="metric-title">Linii Descoperite</div>
+          <div id="metric_lines" class="metric-val"><span class="line-pill pill-none">0 (NONE)</span></div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-title">Unghi Direcție (Steer)</div>
+          <div id="metric_steer" class="metric-val">0.0°</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-title">Vectori Detectați</div>
+          <div id="metric_vecs" class="metric-val">0</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-title">Tensiune Baterie</div>
+          <div id="metric_batt" class="metric-val">7.40 V</div>
+        </div>
+      </div>
+
+      <div class="term-controls">
+        <div class="term-controls-left">
+          <label><input type="checkbox" id="term_autoscroll" checked> Auto-scroll</label>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-sm" id="btn_pause_feed" onclick="togglePauseFeed()">⏸️ Pauză</button>
+          <button class="btn btn-sm" style="background:#475569; color:#fff;" onclick="clearTerminal()">🗑️ Golește</button>
+        </div>
+      </div>
+
+      <div id="terminal_box" class="term-box">
+        <div class="term-line"><span class="ts">[SYS]</span> <span class="tag">Consola Telemetrie NXP -&gt; ESP32 conectata. Se asteapta pachete TELEM...</span></div>
+      </div>
+    </div>
 
     <!-- Engine & Speed Control Card -->
     <div class="card">
@@ -185,6 +337,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <div id="toast">Salvat cu succes!</div>
 
   <script>
+    window.telemetryHistory = []; // Memory collection in browser
+    let lastTelemetryId = 0;
+    let isFeedPaused = false;
+
     function syncVal(id, val) {
       document.getElementById('num_' + id).value = val;
       document.getElementById('val_' + id).innerText = parseFloat(val).toFixed(3);
@@ -269,6 +425,107 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       setTimeout(() => saveParam('STEERING_D_RIGHT', 'D_RIGHT'), 500);
       setTimeout(() => saveParam('STEERING_D_LEFT', 'D_LEFT'), 750);
     }
+
+    /* Telemetry & Terminal Functions */
+    function togglePauseFeed() {
+      isFeedPaused = !isFeedPaused;
+      const btn = document.getElementById('btn_pause_feed');
+      btn.innerText = isFeedPaused ? '▶️ Reia' : '⏸️ Pauză';
+      showToast(isFeedPaused ? 'Feed terminal pus pe pauză' : 'Feed terminal reluat');
+    }
+
+    function clearTerminal() {
+      document.getElementById('terminal_box').innerHTML = '<div class="term-line"><span class="ts">[SYS]</span> <span class="tag">Terminal curățat.</span></div>';
+    }
+
+    function updateTelemetryUI(item) {
+      if (!item) return;
+
+      // Update UI cards
+      const linesElem = document.getElementById('metric_lines');
+      let pillClass = 'pill-none';
+      if (item.which === 'BOTH') pillClass = 'pill-both';
+      else if (item.which === 'LEFT' || item.which === 'RIGHT') pillClass = 'pill-single';
+      else if (item.which.indexOf('TURN') !== -1) pillClass = 'pill-turn';
+
+      linesElem.innerHTML = `<span class="line-pill ${pillClass}">${item.lines} (${item.which})</span>`;
+      document.getElementById('metric_steer').innerText = (item.steer > 0 ? '+' : '') + item.steer.toFixed(1) + '°';
+      document.getElementById('metric_vecs').innerText = item.num_vec;
+      document.getElementById('metric_batt').innerText = item.batt.toFixed(2) + ' V';
+
+      // Update simulated terminal box
+      if (!isFeedPaused) {
+        const box = document.getElementById('terminal_box');
+        const lineDiv = document.createElement('div');
+        lineDiv.className = 'term-line';
+
+        const sec = (item.ts / 1000).toFixed(1);
+        let statusColor = item.lines === 2 ? 'val' : (item.lines === 1 ? 'warn' : 'err');
+
+        lineDiv.innerHTML = `<span class="ts">[${sec}s #${item.id}]</span> <span class="tag">TELEM</span> | Linii: <span class="${statusColor}">${item.lines} (${item.which})</span> | Vecs: <span class="val">${item.num_vec}</span> | Steer: <span class="val">${item.steer > 0 ? '+' : ''}${item.steer.toFixed(1)}°</span> | Speed: ${item.speed}% | Batt: ${item.batt.toFixed(2)}V`;
+
+        box.appendChild(lineDiv);
+
+        if (document.getElementById('term_autoscroll').checked) {
+          box.scrollTop = box.scrollHeight;
+        }
+
+        while (box.children.length > 200) {
+          box.removeChild(box.firstChild);
+        }
+      }
+    }
+
+    function pollTelemetry() {
+      fetch('/api/telemetry?since=' + lastTelemetryId)
+        .then(r => r.json())
+        .then(d => {
+          if (d.new_items && d.new_items.length > 0) {
+            d.new_items.forEach(item => {
+              window.telemetryHistory.push(item);
+              if (item.id > lastTelemetryId) {
+                lastTelemetryId = item.id;
+              }
+              updateTelemetryUI(item);
+            });
+          } else if (d.latest) {
+            updateTelemetryUI(d.latest);
+          }
+        })
+        .catch(e => {})
+        .finally(() => {
+          setTimeout(pollTelemetry, 150);
+        });
+    }
+
+    function downloadJSONHistory() {
+      if (!window.telemetryHistory || window.telemetryHistory.length === 0) {
+        showToast('Niciun pachet de telemetrie înregistrat încă!', true);
+        return;
+      }
+
+      const exportData = {
+        exported_at: new Date().toISOString(),
+        total_records: window.telemetryHistory.length,
+        records: window.telemetryHistory
+      };
+
+      const jsonStr = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const nowStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nxp_telemetry_${nowStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast(`S-au descărcat ${window.telemetryHistory.length} înregistrări JSON!`);
+    }
+
     window.onload = function() {
       fetch('/api/params')
         .then(r => r.json())
@@ -281,6 +538,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           if (d.ENGINE_ENABLED !== undefined) { updateEngineBadge(d.ENGINE_ENABLED === 1); }
         })
         .catch(e => console.log('Init fetch error:', e));
+
+      // Start polling telemetry
+      pollTelemetry();
     }
   </script>
 </body>
@@ -330,6 +590,57 @@ void handleGetParams() {
     json += "\"MOTOR_SPEED\":" + String(motor_speed, 1) + ",";
     json += "\"ENGINE_ENABLED\":" + String(engine_enabled ? 1 : 0);
     json += "}";
+    server.send(200, "application/json", json);
+}
+
+void handleGetTelemetry() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    unsigned long sinceId = 0;
+    if (server.hasArg("since")) {
+        sinceId = (unsigned long)server.arg("since").toInt();
+    }
+
+    String json = "{\"latest\":";
+    if (telemetryCount == 0) {
+        json += "null";
+    } else {
+        int latestIdx = (telemetryHead - 1 + TELEMETRY_BUFFER_SIZE) % TELEMETRY_BUFFER_SIZE;
+        TelemetryFrame &f = telemetryRingBuffer[latestIdx];
+        json += "{\"id\":" + String(f.id);
+        json += ",\"ts\":" + String(f.timestamp);
+        json += ",\"lines\":" + String(f.lineCount);
+        json += ",\"which\":\"" + String(f.whichLines) + "\"";
+        json += ",\"num_vec\":" + String(f.numVectors);
+        json += ",\"steer\":" + String(f.steeringAngle, 2);
+        json += ",\"speed\":" + String(f.motorSpeed, 1);
+        json += ",\"eng\":" + String(f.engineEnabled ? 1 : 0);
+        json += ",\"batt\":" + String(f.batteryVolts, 2);
+        json += "}";
+    }
+
+    json += ",\"new_items\":[";
+    bool first = true;
+    int startIdx = (telemetryCount < TELEMETRY_BUFFER_SIZE) ? 0 : telemetryHead;
+    for (int i = 0; i < telemetryCount; i++) {
+        int idx = (startIdx + i) % TELEMETRY_BUFFER_SIZE;
+        TelemetryFrame &f = telemetryRingBuffer[idx];
+        if (f.id > sinceId) {
+            if (!first) json += ",";
+            first = false;
+            json += "{\"id\":" + String(f.id);
+            json += ",\"ts\":" + String(f.timestamp);
+            json += ",\"lines\":" + String(f.lineCount);
+            json += ",\"which\":\"" + String(f.whichLines) + "\"";
+            json += ",\"num_vec\":" + String(f.numVectors);
+            json += ",\"steer\":" + String(f.steeringAngle, 2);
+            json += ",\"speed\":" + String(f.motorSpeed, 1);
+            json += ",\"eng\":" + String(f.engineEnabled ? 1 : 0);
+            json += ",\"batt\":" + String(f.batteryVolts, 2);
+            json += "}";
+        }
+    }
+    json += "]}";
+
     server.send(200, "application/json", json);
 }
 
@@ -409,6 +720,7 @@ void setup() {
     /* Setup HTTP Server Routes */
     server.on("/", handleRoot);
     server.on("/api/params", handleGetParams);
+    server.on("/api/telemetry", handleGetTelemetry);
     server.on("/set", handleSetParam);
 
     server.begin();
@@ -435,8 +747,6 @@ void loop() {
 
     sendHeartbeat();
 
-    /* Afisare debug in consola USB cand NXP trimite raspuns (ex: ACK) pe Serial2 */
-    while (Serial2.available()) {
-        Serial.write(Serial2.read());
-    }
+    /* Process incoming UART data from NXP board */
+    processSerial2Input();
 }
