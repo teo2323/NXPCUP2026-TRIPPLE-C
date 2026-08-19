@@ -20,7 +20,7 @@
       ],
       "gdbServerConfigs": {
         "linkserver": {
-          "device": "MCXN947:",
+          "device": "MCXN947",
           "core": "cm33_core0"
         },
         "segger": {},
