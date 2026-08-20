@@ -73,37 +73,51 @@ int main(void)
     Wifi_Init(); // Inițializează modulul Wi-Fi
     Ultrasonic_Init(); // Inițializează senzorul ultrasonic
 
+    #define OBSTACLE_STOP_DIST_CM    15.0f /* Obstacle stop threshold distance (in cm) */
+    #define OBSTACLE_CONFIRM_COUNT   2     /* Number of consecutive readings below threshold required to confirm stop */
+
     static uint32_t ultrasonic_print_counter = 0;
+    static uint8_t  obstacle_detected_count  = 0;
 
     while (1)
     {
         Wifi_Process_Rx(); // Procesează datele primite de la modulul Wi-Fi
 
-        // read & write distance from ultrasonic sensor every 20 iterations to avoid flooding the serial output
+        // Measure distance in front of the vehicle using ultrasonic sensor 
+        float distance_cm = Ultrasonic_ReadDistanceCm();
+
+        if (distance_cm > 0.0f && distance_cm <= OBSTACLE_STOP_DIST_CM) {
+            if (++obstacle_detected_count >= OBSTACLE_CONFIRM_COUNT) {
+                PRINTF("[OBSTACLE] Obstacle detected at %d cm! Emergency brake engaged...\r\n", (int)distance_cm);
+                HbridgeBrake(&g_hbridge);
+                pixy_set_led(&cam1, 255, 0, 0); // Pixy Red LED: STOPPED AT OBSTACLE
+
+                /* Permanent safe stop loop maintaining active brake */
+                while (1) {
+                    Wifi_Process_Rx();
+                    HbridgeBrake(&g_hbridge);
+                }
+            }
+        } else if (distance_cm > OBSTACLE_STOP_DIST_CM) {
+            // Reset counter if the path is clear (noise / transient reading)
+            obstacle_detected_count = 0;
+        }
+
+        // Periodic debug output over serial (throttled every 20 iterations) 
         if (++ultrasonic_print_counter >= 20U) {
             ultrasonic_print_counter = 0U;
-
-            float distance_cm = Ultrasonic_ReadDistanceCm();
             
             if (distance_cm >= 0.0f) {
-                PRINTF("[ULTRASONIC] Distanta: %.2d cm\r\n", (int)distance_cm);
+                PRINTF("[ULTRASONIC] Distance: %.2d cm\r\n", (int)distance_cm);
             } else if (distance_cm == -1.0f) {
-                PRINTF("[ULTRASONIC Err -1] Echo nu a trecut in HIGH (ramane 0 / Trigger netransmis sau senzor nealimentat)\r\n");
+                PRINTF("[ULTRASONIC Err -1] Echo stayed LOW (Trigger not sent or sensor not powered)\r\n");
             } else if (distance_cm == -2.0f) {
-                PRINTF("[ULTRASONIC Err -2] Echo a trecut in HIGH dar nu a revenit la LOW in timp (out of range)\n");
+                PRINTF("[ULTRASONIC Err -2] Echo stayed HIGH too long (out of range timeout)\r\n");
             } else if (distance_cm == -3.0f) {
-                PRINTF("[ULTRASONIC Err -3] Echo a strabatut in 0us EROOR\r\n");
+                PRINTF("[ULTRASONIC Err -3] Echo duration was 0 us ERROR\r\n");
             } else if (distance_cm == -4.0f) {
-                PRINTF("[ULTRASONIC Err -4] Echo era deja HIGH inainte de Trigger! \r\n");
+                PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
             }
-
-            // float distance_mm = Ultrasonic_MeasureMm();
-
-            // if (distance_mm >= 0.0f) {
-            //     PRINTF("[ULTRASONIC] Distanta: %d mm (%d cm)\r\n", (int)distance_mm, (int)(distance_mm / 10.0f));
-            // } else {
-            //     PRINTF("[ULTRASONIC] Senzor timeout (no echo)\r\n");
-            // }
         }
 
         /* Maintain continuous motor speed rate */
