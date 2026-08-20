@@ -55,7 +55,7 @@ static status_t pixy_recv(pixy_t *cam, uint8_t *buf, size_t len)
 {
     transferDone   = false;
     transferStatus = kStatus_Success;
-    lpi2c_master_transfer_t xfer = {
+    lpi2c_master_transfer_t xfer = { 
         .slaveAddress   = cam->address,
         .direction      = kLPI2C_Read,
         .subaddressSize = 0,

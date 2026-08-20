@@ -14,6 +14,7 @@
 #include "detection.h"
 #include <math.h>
 #include "wifi.h" // Include noul header pentru funcțiile Wi-Fi
+#include "ultrasonic.h" // Include senzorul ultrasonic
 
 #define MAX_VECTORS          10
 #define AUTOMATED_BASE_SPEED 40
@@ -47,7 +48,7 @@ int main(void)
     pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active automated mode
 
     /* 1. Continuous H-bridge drive speed */
-    HbridgeSpeed(&g_hbridge, 70, 70);
+    HbridgeSpeed(&g_hbridge, 0, 0);
     Steer(0.0);
     //TestServo();
 
@@ -70,11 +71,43 @@ int main(void)
     #define MIN_MISSING_FRAMES 3
 
     Wifi_Init(); // Inițializează modulul Wi-Fi
+    Ultrasonic_Init(); // Inițializează senzorul ultrasonic
+
+    static uint32_t ultrasonic_print_counter = 0;
+
     while (1)
     {
         Wifi_Process_Rx(); // Procesează datele primite de la modulul Wi-Fi
+
+        /* Citire & afișare senzor ultrasonic doar o dată la 15 cadre (~60-100ms) */
+        if (++ultrasonic_print_counter >= 15U) {
+            ultrasonic_print_counter = 0U;
+
+            float distance_cm = Ultrasonic_ReadDistanceCm();
+            
+            if (distance_cm >= 0.0f) {
+                PRINTF("[ULTRASONIC] Distanta: %.2d cm\r\n", (int)distance_cm);
+            } else if (distance_cm == -1.0f) {
+                PRINTF("[ULTRASONIC Err -1] Echo nu a trecut in HIGH (ramane 0 / Trigger netransmis sau senzor nealimentat)\r\n");
+            } else if (distance_cm == -2.0f) {
+                PRINTF("[ULTRASONIC Err -2] Echo a trecut in HIGH dar nu a revenit la LOW (Out of range / no obstacle)\r\n");
+            } else if (distance_cm == -3.0f) {
+                PRINTF("[ULTRASONIC Err -3] Durata impuls zero\r\n");
+            } else if (distance_cm == -4.0f) {
+                PRINTF("[ULTRASONIC Err -4] Echo era deja HIGH (1) inainte de Trigger! (Pin blocat / float)\r\n");
+            }
+
+            // float distance_mm = Ultrasonic_MeasureMm();
+
+            // if (distance_mm >= 0.0f) {
+            //     PRINTF("[ULTRASONIC] Distanta: %d mm (%d cm)\r\n", (int)distance_mm, (int)(distance_mm / 10.0f));
+            // } else {
+            //     PRINTF("[ULTRASONIC] Senzor timeout (no echo)\r\n");
+            // }
+        }
+
         /* Maintain continuous motor speed rate */
-        HbridgeSpeed(&g_hbridge, 70, 70);
+        HbridgeSpeed(&g_hbridge, 0, 0);
 
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
             bool double_line_detected = detection_detect_double_horizontal_lines(vectors, num_vectors, 6);
@@ -86,7 +119,7 @@ int main(void)
                             double_line_state = DOUBLE_LINE_STATE_ON_LINE_1;
                             missing_consecutive_count = 0;
                             pixy_set_led(&cam1, 255, 255, 0); // Yellow LED: 1st double line detected
-                            PRINTF("--- Double horizontal line #1 DETECTED ---\r\n");
+                            // PRINTF("--- Double horizontal line #1 DETECTED ---\r\n");
                         }
                     } else {
                         detect_consecutive_count = 0;
@@ -99,7 +132,7 @@ int main(void)
                             double_line_state = DOUBLE_LINE_STATE_SEARCH_2;
                             detect_consecutive_count = 0;
                             pixy_set_led(&cam1, 0, 255, 0); // Green LED: searching for 2nd double line
-                            PRINTF("--- Double horizontal line #1 PASSED ---\r\n");
+                            //PRINTF("--- Double horizontal line #1 PASSED ---\r\n");
                         }
                     } else {
                         missing_consecutive_count = 0;
@@ -112,7 +145,7 @@ int main(void)
                             double_line_state = DOUBLE_LINE_STATE_ON_LINE_2;
                             missing_consecutive_count = 0;
                             pixy_set_led(&cam1, 255, 255, 0); // Yellow LED: 2nd double line detected
-                            PRINTF("--- Double horizontal line #2 DETECTED ---\r\n");
+                            //PRINTF("--- Double horizontal line #2 DETECTED ---\r\n");
                         }
                     } else {
                         detect_consecutive_count = 0;
@@ -122,7 +155,7 @@ int main(void)
                 case DOUBLE_LINE_STATE_ON_LINE_2:
                     if (!double_line_detected) {
                         if (++missing_consecutive_count >= MIN_MISSING_FRAMES) {
-                            PRINTF("--- Double horizontal line #2 PASSED! Waiting 1s before stopping... ---\r\n");
+                            //PRINTF("--- Double horizontal line #2 PASSED! Waiting 1s before stopping... ---\r\n");
 
                             /* Drive straight for 1 second */
                             Steer(0.0);
@@ -132,7 +165,7 @@ int main(void)
                             /* Stop engines */
                             HbridgeBrake(&g_hbridge);
                             pixy_set_led(&cam1, 255, 0, 0); // Red LED: stopped
-                            PRINTF("--- ENGINES STOPPED ---\r\n");
+                            //PRINTF("--- ENGINES STOPPED ---\r\n");
                             double_line_state = DOUBLE_LINE_STATE_STOPPED;
                         }
                     } else {
@@ -182,7 +215,7 @@ int main(void)
                     Steer(steer_angle);
                     last_steering_angle = steer_angle;
 
-                    PRINTF("Vede ambii vectori\n");
+                    //PRINTF("Vede ambii vectori\n");
                 }
                 else {
                     /* Single line detected case (lines 76-87 commented out):
@@ -213,15 +246,15 @@ int main(void)
                     int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
 
                     if (det.left_line_present) {
-                        PRINTF("Linia stanga prezenta!\r\n");
+                        //PRINTF("Linia stanga prezenta!\r\n");
                     } else {
-                        PRINTF("Linia dreapta prezenta!\r\n");
+                        //PRINTF("Linia dreapta prezenta!\r\n");
                     }
 
                     if (slope < 0 && slope_x100 / 100 == 0) {
-                        PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
+                        //PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
                     } else {
-                        PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
+                        //PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
                     }
 
                     
@@ -256,7 +289,7 @@ int main(void)
                     // PRINTF("[Turn] Horizontal vector detected | center_x: %d | dir: %s | Steer: %d deg\r\n",
                            //(int)turn.center_x, turn.turn_left ? "LEFT" : "RIGHT", (int)steer_angle);
 
-                    PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
+                    //PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
                 }
                 else {
                     /* No horizontal vector either -> gently decay angle toward straight */
@@ -266,7 +299,7 @@ int main(void)
                     }
                     Steer(last_steering_angle);
 
-                    PRINTF("Nu am gasit niciun vector, ma pis pe ea de detectie\r\n");
+                    //PRINTF("Nu am gasit niciun vector, ma pis pe ea de detectie\r\n");
 
                     // PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
                 }

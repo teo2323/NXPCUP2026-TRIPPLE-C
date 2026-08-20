@@ -25,8 +25,7 @@ extern "C" {
  */
 void BOARD_InitBootPins(void);
 
-#define PCR_IBE_ibe1 0x01u        /*!<@brief Input Buffer Enable: Enables */
-#define PORT5_PCR_MUX_mux00 0x00u /*!<@brief Pin Multiplex Control: Alternative 0 (GPIO) */
+#define PCR_IBE_ibe1 0x01u /*!<@brief Input Buffer Enable: Enables */
 
 /*! @name PORT0_2 (coord B16), P0_2/SWO/J23[6]/D16[4]
   @{ */
@@ -124,34 +123,34 @@ void BOARD_InitBootPins(void);
 #define BOARD_INITPINS_GPIO0_PIN_MASK (1U << 24U)      /*!<@brief PORT pin mask */
                                                        /* @} */
 
-/*! @name PORT5_8 (coord L14), P5_8/U9[19]/J9[31]
+/*! @name PORT4_22 (coord T12), P4_22/J8[27]
   @{ */
 
 /* Symbols to be used with GPIO driver */
-#define BOARD_INITPINS_senzor_trig_GPIO GPIO5               /*!<@brief GPIO peripheral base pointer */
-#define BOARD_INITPINS_senzor_trig_INIT_GPIO_VALUE 0U       /*!<@brief GPIO output initial state */
-#define BOARD_INITPINS_senzor_trig_GPIO_PIN 8U              /*!<@brief GPIO pin number */
-#define BOARD_INITPINS_senzor_trig_GPIO_PIN_MASK (1U << 8U) /*!<@brief GPIO pin mask */
+#define BOARD_INITPINS_senzor2_trig_GPIO GPIO4                /*!<@brief GPIO peripheral base pointer */
+#define BOARD_INITPINS_senzor2_trig_INIT_GPIO_VALUE 0U        /*!<@brief GPIO output initial state */
+#define BOARD_INITPINS_senzor2_trig_GPIO_PIN 22U              /*!<@brief GPIO pin number */
+#define BOARD_INITPINS_senzor2_trig_GPIO_PIN_MASK (1U << 22U) /*!<@brief GPIO pin mask */
 
 /* Symbols to be used with PORT driver */
-#define BOARD_INITPINS_senzor_trig_PORT PORT5               /*!<@brief PORT peripheral base pointer */
-#define BOARD_INITPINS_senzor_trig_PIN 8U                   /*!<@brief PORT pin number */
-#define BOARD_INITPINS_senzor_trig_PIN_MASK (1U << 8U)      /*!<@brief PORT pin mask */
-                                                            /* @} */
+#define BOARD_INITPINS_senzor2_trig_PORT PORT4                /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_senzor2_trig_PIN 22U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_senzor2_trig_PIN_MASK (1U << 22U)      /*!<@brief PORT pin mask */
+                                                              /* @} */
 
-/*! @name PORT5_9 (coord M14), P5_9/J9[29]
+/*! @name PORT4_23 (coord U12), P4_23/J8[28]
   @{ */
 
 /* Symbols to be used with GPIO driver */
-#define BOARD_INITPINS_senzor_echo_GPIO GPIO5               /*!<@brief GPIO peripheral base pointer */
-#define BOARD_INITPINS_senzor_echo_GPIO_PIN 9U              /*!<@brief GPIO pin number */
-#define BOARD_INITPINS_senzor_echo_GPIO_PIN_MASK (1U << 9U) /*!<@brief GPIO pin mask */
+#define BOARD_INITPINS_senzor2_echo_GPIO GPIO4                /*!<@brief GPIO peripheral base pointer */
+#define BOARD_INITPINS_senzor2_echo_GPIO_PIN 23U              /*!<@brief GPIO pin number */
+#define BOARD_INITPINS_senzor2_echo_GPIO_PIN_MASK (1U << 23U) /*!<@brief GPIO pin mask */
 
 /* Symbols to be used with PORT driver */
-#define BOARD_INITPINS_senzor_echo_PORT PORT5               /*!<@brief PORT peripheral base pointer */
-#define BOARD_INITPINS_senzor_echo_PIN 9U                   /*!<@brief PORT pin number */
-#define BOARD_INITPINS_senzor_echo_PIN_MASK (1U << 9U)      /*!<@brief PORT pin mask */
-                                                            /* @} */
+#define BOARD_INITPINS_senzor2_echo_PORT PORT4                /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_senzor2_echo_PIN 23U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_senzor2_echo_PIN_MASK (1U << 23U)      /*!<@brief PORT pin mask */
+                                                              /* @} */
 
 /*!
  * @brief Configures pin routing and optionally pin electrical features.
