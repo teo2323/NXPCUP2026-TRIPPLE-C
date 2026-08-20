@@ -11,14 +11,9 @@ extern "C" {
 
 #define ULTRASONIC_GPIO_PORT    GPIO4
 #define ULTRASONIC_TRIG_PIN     22U   /* P4_22 — Trigger output */
-#define ULTRASONIC_ECHO_PIN     23U    /* P4_23 — Echo input     */
+#define ULTRASONIC_ECHO_PIN     23U   /* P4_23 — Echo input     */
 
 void Ultrasonic_Init(void);
-
-/**
- * @brief Measure distance in centimeters.
- * @return Distance in cm (float), or -1.0f if measurement timed out / out of range.
- */
 float Ultrasonic_ReadDistanceCm(void);
 
 #ifdef __cplusplus

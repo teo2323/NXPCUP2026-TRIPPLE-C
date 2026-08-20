@@ -79,8 +79,8 @@ int main(void)
     {
         Wifi_Process_Rx(); // Procesează datele primite de la modulul Wi-Fi
 
-        /* Citire & afișare senzor ultrasonic doar o dată la 15 cadre (~60-100ms) */
-        if (++ultrasonic_print_counter >= 15U) {
+        // read & write distance from ultrasonic sensor every 20 iterations to avoid flooding the serial output
+        if (++ultrasonic_print_counter >= 20U) {
             ultrasonic_print_counter = 0U;
 
             float distance_cm = Ultrasonic_ReadDistanceCm();
@@ -90,11 +90,11 @@ int main(void)
             } else if (distance_cm == -1.0f) {
                 PRINTF("[ULTRASONIC Err -1] Echo nu a trecut in HIGH (ramane 0 / Trigger netransmis sau senzor nealimentat)\r\n");
             } else if (distance_cm == -2.0f) {
-                PRINTF("[ULTRASONIC Err -2] Echo a trecut in HIGH dar nu a revenit la LOW (Out of range / no obstacle)\r\n");
+                PRINTF("[ULTRASONIC Err -2] Echo a trecut in HIGH dar nu a revenit la LOW in timp (out of range)\n");
             } else if (distance_cm == -3.0f) {
-                PRINTF("[ULTRASONIC Err -3] Durata impuls zero\r\n");
+                PRINTF("[ULTRASONIC Err -3] Echo a strabatut in 0us EROOR\r\n");
             } else if (distance_cm == -4.0f) {
-                PRINTF("[ULTRASONIC Err -4] Echo era deja HIGH (1) inainte de Trigger! (Pin blocat / float)\r\n");
+                PRINTF("[ULTRASONIC Err -4] Echo era deja HIGH inainte de Trigger! \r\n");
             }
 
             // float distance_mm = Ultrasonic_MeasureMm();
