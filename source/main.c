@@ -97,28 +97,29 @@ int main(void)
                     Wifi_Process_Rx();
                     HbridgeBrake(&g_hbridge);
                 }
+                // TX: 
             }
         } else if (distance_cm > OBSTACLE_STOP_DIST_CM) {
             // Reset counter if the path is clear (noise / transient reading)
             obstacle_detected_count = 0;
         }
 
-        // Periodic debug output over serial (throttled every 20 iterations) 
-        if (++ultrasonic_print_counter >= 20U) {
-            ultrasonic_print_counter = 0U;
+        // // Periodic debug output over serial (throttled every 20 iterations) 
+        // if (++ultrasonic_print_counter >= 20U) {
+        //     ultrasonic_print_counter = 0U;
             
-            if (distance_cm >= 0.0f) {
-                PRINTF("[ULTRASONIC] Distance: %.2d cm\r\n", (int)distance_cm);
-            } else if (distance_cm == -1.0f) {
-                PRINTF("[ULTRASONIC Err -1] Echo stayed LOW (Trigger not sent or sensor not powered)\r\n");
-            } else if (distance_cm == -2.0f) {
-                PRINTF("[ULTRASONIC Err -2] Echo stayed HIGH too long (out of range timeout)\r\n");
-            } else if (distance_cm == -3.0f) {
-                PRINTF("[ULTRASONIC Err -3] Echo duration was 0 us ERROR\r\n");
-            } else if (distance_cm == -4.0f) {
-                PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
-            }
-        }
+        //     if (distance_cm >= 0.0f) {
+        //         PRINTF("[ULTRASONIC] Distance: %.2d cm\r\n", (int)distance_cm);
+        //     } else if (distance_cm == -1.0f) {
+        //         PRINTF("[ULTRASONIC Err -1] Echo stayed LOW (Trigger not sent or sensor not powered)\r\n");
+        //     } else if (distance_cm == -2.0f) {
+        //         PRINTF("[ULTRASONIC Err -2] Echo stayed HIGH too long (out of range timeout)\r\n");
+        //     } else if (distance_cm == -3.0f) {
+        //         PRINTF("[ULTRASONIC Err -3] Echo duration was 0 us ERROR\r\n");
+        //     } else if (distance_cm == -4.0f) {
+        //         PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
+        //     }
+        // }
 
         /* Maintain continuous motor speed rate */
         HbridgeSpeed(&g_hbridge, 0, 0);
