@@ -73,7 +73,7 @@ int main(void)
     Wifi_Init(); // Inițializează modulul Wi-Fi
     Ultrasonic_Init(); // Inițializează senzorul ultrasonic
 
-    #define OBSTACLE_STOP_DIST_CM    15.0f /* Obstacle stop threshold distance (in cm) */
+    #define OBSTACLE_STOP_DIST_CM    20.0f /* Obstacle stop threshold distance (in cm) */
     #define OBSTACLE_CONFIRM_COUNT   2     /* Number of consecutive readings below threshold required to confirm stop */
 
     static uint32_t ultrasonic_print_counter = 0;
@@ -88,41 +88,40 @@ int main(void)
 
         if (distance_cm > 0.0f && distance_cm <= OBSTACLE_STOP_DIST_CM) {
             if (++obstacle_detected_count >= OBSTACLE_CONFIRM_COUNT) {
-                PRINTF("[OBSTACLE] Obstacle detected at %d cm! Emergency brake engaged...\r\n", (int)distance_cm);
+                obstacle_detected_count = OBSTACLE_CONFIRM_COUNT; // Prevenim overflow
+                PRINTF("[OBSTACLE] Obstacle detected at %d cm! Braking...\r\n", (int)distance_cm);
                 HbridgeBrake(&g_hbridge);
                 pixy_set_led(&cam1, 255, 0, 0); // Pixy Red LED: STOPPED AT OBSTACLE
-
-                /* Permanent safe stop loop maintaining active brake */
-                while (1) {
-                    Wifi_Process_Rx();
-                    HbridgeBrake(&g_hbridge);
-                }
-                // TX: 
+                continue; // Menținem frâna fără a bloca bucla
             }
-        } else if (distance_cm > OBSTACLE_STOP_DIST_CM) {
-            // Reset counter if the path is clear (noise / transient reading)
+        } else {
+            if (obstacle_detected_count >= OBSTACLE_CONFIRM_COUNT) {
+                PRINTF("[OBSTACLE] Path clear (%d cm)! Resuming movement...\r\n", (int)distance_cm);
+                pixy_set_led(&cam1, 0, 255, 0); // Pixy Green LED: Resumed
+            }
+            // Reset counter if the path is clear or out-of-range timeout
             obstacle_detected_count = 0;
         }
 
-        // // Periodic debug output over serial (throttled every 20 iterations) 
-        // if (++ultrasonic_print_counter >= 20U) {
-        //     ultrasonic_print_counter = 0U;
+        // Periodic debug output over serial (throttled every 20 iterations) 
+        if (++ultrasonic_print_counter >= 20U) {
+            ultrasonic_print_counter = 0U;
             
-        //     if (distance_cm >= 0.0f) {
-        //         PRINTF("[ULTRASONIC] Distance: %.2d cm\r\n", (int)distance_cm);
-        //     } else if (distance_cm == -1.0f) {
-        //         PRINTF("[ULTRASONIC Err -1] Echo stayed LOW (Trigger not sent or sensor not powered)\r\n");
-        //     } else if (distance_cm == -2.0f) {
-        //         PRINTF("[ULTRASONIC Err -2] Echo stayed HIGH too long (out of range timeout)\r\n");
-        //     } else if (distance_cm == -3.0f) {
-        //         PRINTF("[ULTRASONIC Err -3] Echo duration was 0 us ERROR\r\n");
-        //     } else if (distance_cm == -4.0f) {
-        //         PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
-        //     }
-        // }
+            if (distance_cm >= 0.0f) {
+                PRINTF("[ULTRASONIC] Distance: %d cm\r\n", (int)distance_cm);
+            } else if (distance_cm == -1.0f) {
+                PRINTF("[ULTRASONIC Err -1] Echo stayed LOW (Trigger not sent or sensor not powered)\r\n");
+            } else if (distance_cm == -2.0f) {
+                PRINTF("[ULTRASONIC Err -2] Echo stayed HIGH too long (out of range timeout)\r\n");
+            } else if (distance_cm == -3.0f) {
+                PRINTF("[ULTRASONIC Err -3] Echo duration was 0 us ERROR\r\n");
+            } else if (distance_cm == -4.0f) {
+                PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
+            }
+        }
 
         /* Maintain continuous motor speed rate */
-        HbridgeSpeed(&g_hbridge, 0, 0);
+        HbridgeSpeed(&g_hbridge, 100, 100);
 
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
             bool double_line_detected = detection_detect_double_horizontal_lines(vectors, num_vectors, 6);
