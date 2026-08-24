@@ -55,21 +55,6 @@ int main(void)
     double last_steering_angle = 0.0;
     double previous_error      = 0.0;  // D term: stores last frame's angle
 
-    typedef enum {
-        DOUBLE_LINE_STATE_SEARCH_1 = 0,
-        DOUBLE_LINE_STATE_ON_LINE_1,
-        DOUBLE_LINE_STATE_SEARCH_2,
-        DOUBLE_LINE_STATE_ON_LINE_2,
-        DOUBLE_LINE_STATE_STOPPED
-    } double_line_state_t;
-
-    double_line_state_t double_line_state = DOUBLE_LINE_STATE_SEARCH_1;
-    uint8_t detect_consecutive_count = 0;
-    uint8_t missing_consecutive_count = 0;
-
-    #define MIN_CONFIRM_FRAMES 3
-    #define MIN_MISSING_FRAMES 3
-
     Wifi_Init(); // Inițializează modulul Wi-Fi
     Ultrasonic_Init(); // Inițializează senzorul ultrasonic
 
@@ -107,97 +92,23 @@ int main(void)
         if (++ultrasonic_print_counter >= 20U) {
             ultrasonic_print_counter = 0U;
             
-            if (distance_cm >= 0.0f) {
-                PRINTF("[ULTRASONIC] Distance: %d cm\r\n", (int)distance_cm);
-            } else if (distance_cm == -1.0f) {
-                PRINTF("[ULTRASONIC Err -1] Echo stayed LOW (Trigger not sent or sensor not powered)\r\n");
-            } else if (distance_cm == -2.0f) {
-                PRINTF("[ULTRASONIC Err -2] Echo stayed HIGH too long (out of range timeout)\r\n");
-            } else if (distance_cm == -3.0f) {
-                PRINTF("[ULTRASONIC Err -3] Echo duration was 0 us ERROR\r\n");
-            } else if (distance_cm == -4.0f) {
-                PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
-            }
+            // if (distance_cm >= 0.0f) {
+            //     PRINTF("[ULTRASONIC] Distance: %d cm\r\n", (int)distance_cm);
+            // } else if (distance_cm == -1.0f) {
+            //     PRINTF("[ULTRASONIC Err -1] Echo stayed LOW (Trigger not sent or sensor not powered)\r\n");
+            // } else if (distance_cm == -2.0f) {
+            //     PRINTF("[ULTRASONIC Err -2] Echo stayed HIGH too long (out of range timeout)\r\n");
+            // } else if (distance_cm == -3.0f) {
+            //     PRINTF("[ULTRASONIC Err -3] Echo duration was 0 us ERROR\r\n");
+            // } else if (distance_cm == -4.0f) {
+            //     PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
+            // }
         }
 
         /* Maintain continuous motor speed rate */
         HbridgeSpeed(&g_hbridge, 100, 100);
 
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
-            bool double_line_detected = detection_detect_double_horizontal_lines(vectors, num_vectors, 6);
-
-            switch (double_line_state) {
-                case DOUBLE_LINE_STATE_SEARCH_1:
-                    if (double_line_detected) {
-                        if (++detect_consecutive_count >= MIN_CONFIRM_FRAMES) {
-                            double_line_state = DOUBLE_LINE_STATE_ON_LINE_1;
-                            missing_consecutive_count = 0;
-                            pixy_set_led(&cam1, 255, 255, 0); // Yellow LED: 1st double line detected
-                            // PRINTF("--- Double horizontal line #1 DETECTED ---\r\n");
-                        }
-                    } else {
-                        detect_consecutive_count = 0;
-                    }
-                    break;
-
-                case DOUBLE_LINE_STATE_ON_LINE_1:
-                    if (!double_line_detected) {
-                        if (++missing_consecutive_count >= MIN_MISSING_FRAMES) {
-                            double_line_state = DOUBLE_LINE_STATE_SEARCH_2;
-                            detect_consecutive_count = 0;
-                            pixy_set_led(&cam1, 0, 255, 0); // Green LED: searching for 2nd double line
-                            //PRINTF("--- Double horizontal line #1 PASSED ---\r\n");
-                        }
-                    } else {
-                        missing_consecutive_count = 0;
-                    }
-                    break;
-
-                case DOUBLE_LINE_STATE_SEARCH_2:
-                    if (double_line_detected) {
-                        if (++detect_consecutive_count >= MIN_CONFIRM_FRAMES) {
-                            double_line_state = DOUBLE_LINE_STATE_ON_LINE_2;
-                            missing_consecutive_count = 0;
-                            pixy_set_led(&cam1, 255, 255, 0); // Yellow LED: 2nd double line detected
-                            //PRINTF("--- Double horizontal line #2 DETECTED ---\r\n");
-                        }
-                    } else {
-                        detect_consecutive_count = 0;
-                    }
-                    break;
-
-                case DOUBLE_LINE_STATE_ON_LINE_2:
-                    if (!double_line_detected) {
-                        if (++missing_consecutive_count >= MIN_MISSING_FRAMES) {
-                            //PRINTF("--- Double horizontal line #2 PASSED! Waiting 1s before stopping... ---\r\n");
-
-                            /* Drive straight for 1 second */
-                            Steer(0.0);
-                            HbridgeSpeed(&g_hbridge, 70, 70);
-                            SDK_DelayAtLeastUs(1000000U, SystemCoreClock);
-
-                            /* Stop engines */
-                            HbridgeBrake(&g_hbridge);
-                            pixy_set_led(&cam1, 255, 0, 0); // Red LED: stopped
-                            //PRINTF("--- ENGINES STOPPED ---\r\n");
-                            double_line_state = DOUBLE_LINE_STATE_STOPPED;
-                        }
-                    } else {
-                        missing_consecutive_count = 0;
-                    }
-                    break;
-
-                case DOUBLE_LINE_STATE_STOPPED:
-                    HbridgeBrake(&g_hbridge);
-                    break;
-            }
-
-            if (double_line_state == DOUBLE_LINE_STATE_STOPPED) {
-                while (1) {
-                    Wifi_Process_Rx();
-                    HbridgeBrake(&g_hbridge);
-                }
-            }
 
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
@@ -232,20 +143,6 @@ int main(void)
                     //PRINTF("Vede ambii vectori\n");
                 }
                 else {
-                    /* Single line detected case (lines 76-87 commented out):
-                    else if (det.left_line_present && !det.right_line_present) {
-                        // Case 2: Only LEFT track line detected -> find center by adding 25px
-                        double track_center_x = det.left_line.bottom_x + 25.0;
-                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
-                        raw_steering_angle    = (-1.0 * det.left_line.inverse_slope) + (center_offset * 0.25);
-                    }
-                    else if (!det.left_line_present && det.right_line_present) {
-                        // Case 3: Only RIGHT track line detected -> find center by removing 25px
-                        double track_center_x = det.right_line.bottom_x - 25.0;
-                        double center_offset  = track_center_x - (double)PIXY_FRAME_CENTER_X;
-                        raw_steering_angle    = (-1.0 * det.right_line.inverse_slope) + (center_offset * 0.25);
-                    }
-                    */
 
                     /* Find slope of the visible track line */
                     const line_track_t *visible_line = det.left_line_present ? &det.left_line : &det.right_line;
@@ -260,9 +157,9 @@ int main(void)
                     int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
 
                     if (det.left_line_present) {
-                        //PRINTF("Linia stanga prezenta!\r\n");
+                        PRINTF("Linia stanga prezenta!\r\n");
                     } else {
-                        //PRINTF("Linia dreapta prezenta!\r\n");
+                        PRINTF("Linia dreapta prezenta!\r\n");
                     }
 
                     if (slope < 0 && slope_x100 / 100 == 0) {
