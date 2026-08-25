@@ -26,6 +26,10 @@ pin_labels:
 - {pin_num: E8, pin_signal: PIO0_28/FC1_P4/FC0_P4/CT_INP0/ADC0_B20, label: 'P0_28/J2[2]', identifier: MOTOR2_IN3}
 - {pin_num: E10, pin_signal: PIO0_27/FC1_P3/CT0_MAT3/ADC0_B19, label: 'P0_27/SJ6[1]', identifier: LED_GREEN;GPIO_27}
 - {pin_num: F10, pin_signal: PIO0_26/FC1_P2/CT0_MAT2/ADC0_B18, label: 'P0_26/J2[10]', identifier: GPIO_16;GPIO_26}
+- {pin_num: T12, pin_signal: PIO4_22/CT2_MAT2/FLEXIO0_D30, label: 'P4_22/J8[27]', identifier: senzor2_;senzor2_trig}
+- {pin_num: U12, pin_signal: PIO4_23/TRIG_OUT5/FC2_P6/CT2_MAT3/FLEXIO0_D31/SINC0_MCLK_OUT2/OPAMP2_OUT/ADC0_A2/ADC0_B2/ADC1_B3/CMP2_IN4P, label: 'P4_23/J8[28]', identifier: senzor2_echo}
+- {pin_num: L14, pin_signal: PIO5_8/TRIG_OUT7/TAMPER6/ADC1_B16, label: 'P5_8/U9[19]/J9[31]', identifier: senzor_trig}
+- {pin_num: M14, pin_signal: PIO5_9/TAMPER7/ADC1_B17, label: 'P5_9/J9[29]', identifier: senzor_echo}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS ***********
  */
 /* clang-format on */
@@ -68,6 +72,9 @@ BOARD_InitPins:
   - {pin_num: E8, peripheral: GPIO0, signal: 'GPIO, 28', pin_signal: PIO0_28/FC1_P4/FC0_P4/CT_INP0/ADC0_B20, direction: OUTPUT}
   - {pin_num: D7, peripheral: GPIO0, signal: 'GPIO, 31', pin_signal: PIO0_31/CT_INP3/ADC0_B23, direction: OUTPUT}
   - {pin_num: B6, peripheral: CTIMER0, signal: 'MATCH, 0', pin_signal: PIO0_24/FC1_P0/CT0_MAT0/ADC0_B16}
+  - {pin_num: T12, peripheral: GPIO4, signal: 'GPIO, 22', pin_signal: PIO4_22/CT2_MAT2/FLEXIO0_D30, identifier: senzor2_trig, direction: OUTPUT}
+  - {pin_num: U12, peripheral: GPIO4, signal: 'GPIO, 23', pin_signal: PIO4_23/TRIG_OUT5/FC2_P6/CT2_MAT3/FLEXIO0_D31/SINC0_MCLK_OUT2/OPAMP2_OUT/ADC0_A2/ADC0_B2/ADC1_B3/CMP2_IN4P,
+    direction: INPUT}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS ***********
  */
 /* clang-format on */
@@ -82,6 +89,8 @@ void BOARD_InitPins(void)
 {
     /* Enables the clock for GPIO0: Enables clock */
     CLOCK_EnableClock(kCLOCK_Gpio0);
+    /* Enables the clock for GPIO4: Enables clock */
+    CLOCK_EnableClock(kCLOCK_Gpio4);
     /* Enables the clock for PORT0 controller: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port0);
     /* Enables the clock for PORT1: Enables clock */
@@ -116,6 +125,20 @@ void BOARD_InitPins(void)
     };
     /* Initialize GPIO functionality on pin PIO0_31 (pin D7)  */
     GPIO_PinInit(BOARD_INITPINS_MOTOR2_IN4_GPIO, BOARD_INITPINS_MOTOR2_IN4_PIN, &MOTOR2_IN4_config);
+
+    gpio_pin_config_t senzor2_trig_config = {
+        .pinDirection = kGPIO_DigitalOutput,
+        .outputLogic = 0U
+    };
+    /* Initialize GPIO functionality on pin PIO4_22 (pin T12)  */
+    GPIO_PinInit(BOARD_INITPINS_senzor2_trig_GPIO, BOARD_INITPINS_senzor2_trig_PIN, &senzor2_trig_config);
+
+    gpio_pin_config_t senzor2_echo_config = {
+        .pinDirection = kGPIO_DigitalInput,
+        .outputLogic = 0U
+    };
+    /* Initialize GPIO functionality on pin PIO4_23 (pin U12)  */
+    GPIO_PinInit(BOARD_INITPINS_senzor2_echo_GPIO, BOARD_INITPINS_senzor2_echo_PIN, &senzor2_echo_config);
 
     /* PORT0_16 (pin B10) is configured as FC0_P0 */
     PORT_SetPinMux(PORT0, 16U, kPORT_MuxAlt2);
@@ -274,6 +297,26 @@ void BOARD_InitPins(void)
     PORT_SetPinMux(PORT4, 16U, kPORT_MuxAlt4);
 
     PORT4->PCR[16] = ((PORT4->PCR[16] &
+                       /* Mask bits to zero which are setting */
+                       (~(PORT_PCR_IBE_MASK)))
+
+                      /* Input Buffer Enable: Enables. */
+                      | PORT_PCR_IBE(PCR_IBE_ibe1));
+
+    /* PORT4_22 (pin T12) is configured as PIO4_22 */
+    PORT_SetPinMux(BOARD_INITPINS_senzor2_trig_PORT, BOARD_INITPINS_senzor2_trig_PIN, kPORT_MuxAlt0);
+
+    PORT4->PCR[22] = ((PORT4->PCR[22] &
+                       /* Mask bits to zero which are setting */
+                       (~(PORT_PCR_IBE_MASK)))
+
+                      /* Input Buffer Enable: Enables. */
+                      | PORT_PCR_IBE(PCR_IBE_ibe1));
+
+    /* PORT4_23 (pin U12) is configured as PIO4_23 */
+    PORT_SetPinMux(BOARD_INITPINS_senzor2_echo_PORT, BOARD_INITPINS_senzor2_echo_PIN, kPORT_MuxAlt0);
+
+    PORT4->PCR[23] = ((PORT4->PCR[23] &
                        /* Mask bits to zero which are setting */
                        (~(PORT_PCR_IBE_MASK)))
 

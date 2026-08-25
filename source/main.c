@@ -14,6 +14,7 @@
 #include "detection.h"
 #include <math.h>
 #include "wifi.h" // Include noul header pentru funcțiile Wi-Fi
+#include "ultrasonic.h" // Include senzorul ultrasonic
 
 #define MAX_VECTORS          10
 #define AUTOMATED_BASE_SPEED 40
@@ -56,12 +57,56 @@ int main(void)
     double previous_error      = 0.0;  // D term: stores last frame's angle
 
     Wifi_Init(); // Inițializează modulul Wi-Fi
+    Ultrasonic_Init(); // Inițializează senzorul ultrasonic
+
+    #define OBSTACLE_STOP_DIST_CM    20.0f /* Obstacle stop threshold distance (in cm) */
+    #define OBSTACLE_CONFIRM_COUNT   2     /* Number of consecutive readings below threshold required to confirm stop */
+
+    static uint32_t ultrasonic_print_counter = 0;
+    static uint8_t  obstacle_detected_count  = 0;
 
     static bool last_printed_engine_state = false;
 
     while (1)
     {
         Wifi_Process_Rx(); // Procesează datele primite de la modulul Wi-Fi
+
+        // Measure distance in front of the vehicle using ultrasonic sensor 
+        float distance_cm = Ultrasonic_ReadDistanceCm();
+
+        if (distance_cm > 0.0f && distance_cm <= OBSTACLE_STOP_DIST_CM) {
+            if (++obstacle_detected_count >= OBSTACLE_CONFIRM_COUNT) {
+                obstacle_detected_count = OBSTACLE_CONFIRM_COUNT; // Prevenim overflow
+                PRINTF("[OBSTACLE] Obstacle detected at %d cm! Braking...\r\n", (int)distance_cm);
+                HbridgeBrake(&g_hbridge);
+                pixy_set_led(&cam1, 255, 0, 0); // Pixy Red LED: STOPPED AT OBSTACLE
+                continue; // Menținem frâna fără a bloca bucla
+            }
+        } else {
+            if (obstacle_detected_count >= OBSTACLE_CONFIRM_COUNT) {
+                PRINTF("[OBSTACLE] Path clear (%d cm)! Resuming movement...\r\n", (int)distance_cm);
+                pixy_set_led(&cam1, 0, 255, 0); // Pixy Green LED: Resumed
+            }
+            // Reset counter if the path is clear or out-of-range timeout
+            obstacle_detected_count = 0;
+        }
+
+        // Periodic debug output over serial (throttled every 20 iterations) 
+        if (++ultrasonic_print_counter >= 20U) {
+            ultrasonic_print_counter = 0U;
+            
+            if (distance_cm >= 0.0f) {
+                PRINTF("[ULTRASONIC] Distance: %d cm\r\n", (int)distance_cm);
+            } else if (distance_cm == -1.0f) {
+                PRINTF("[ULTRASONIC Err -1] Echo stayed LOW (Trigger not sent or sensor not powered)\r\n");
+            } else if (distance_cm == -2.0f) {
+                PRINTF("[ULTRASONIC Err -2] Echo stayed HIGH too long (out of range timeout)\r\n");
+            } else if (distance_cm == -3.0f) {
+                PRINTF("[ULTRASONIC Err -3] Echo duration was 0 us ERROR\r\n");
+            } else if (distance_cm == -4.0f) {
+                PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
+            }
+        }
         
         /* Maintain continuous dynamic motor speed rate */
         if (g_engine_enabled != last_printed_engine_state) {
