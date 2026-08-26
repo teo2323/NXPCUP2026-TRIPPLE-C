@@ -369,7 +369,7 @@ bool detection_detect_turn_track(const uint16_t *raw_vectors,
         int abs_dy = dy < 0 ? -dy : dy;
 
         /* Must be predominantly horizontal and long enough to be meaningful */
-        if (abs_dx > abs_dy && abs_dx >= DETECTION_MIN_DX_HORIZONTAL) {
+        if (abs_dx > 2.5 * abs_dy && abs_dx >= DETECTION_MIN_DX_HORIZONTAL) {
             horiz[horiz_count++] = parsed[i];
         }
     }
@@ -497,15 +497,38 @@ void detection_debug_vectors(const uint16_t *raw_vectors, size_t num_vectors)
             PRINTF("HORIZONTAL -> TURN %s (center_x=%d)\r\n", dir, (int)center_x);
             cnt_horizontal++;
         } else {
-            PRINTF("REJECTED   (|dx|=%d |dy|=%d - too short or diagonal)\r\n",
-                   abs_dx, abs_dy);
+            // PRINTF("REJECTED   (|dx|=%d |dy|=%d - too short or diagonal)\r\n", abs_dx, abs_dy);
             cnt_rejected++;
         }
     }
 
-    PRINTF("--- Summary: LEFT=%u RIGHT=%u HORIZ=%u REJECTED=%u ---\r\n\r\n",
-           (unsigned)cnt_vertical_left,
-           (unsigned)cnt_vertical_right,
-           (unsigned)cnt_horizontal,
-           (unsigned)cnt_rejected);
+    // PRINTF("--- Summary: LEFT=%u RIGHT=%u HORIZ=%u REJECTED=%u ---\r\n\r\n", (unsigned)cnt_vertical_left, (unsigned)cnt_vertical_right, (unsigned)cnt_horizontal, (unsigned)cnt_rejected);
 }
+
+size_t detection_count_horizontal_vectors(const uint16_t *raw_vectors, size_t num_vectors)
+{
+    if (raw_vectors == NULL || num_vectors == 0) return 0;
+
+    pixy_vector_t parsed[16];
+    size_t parsed_count = detection_parse_vectors(raw_vectors, num_vectors, parsed, 16);
+    size_t count = 0;
+
+    for (size_t i = 0; i < parsed_count; i++) {
+        int dx     = (int)parsed[i].x1 - (int)parsed[i].x0;
+        int dy     = (int)parsed[i].y1 - (int)parsed[i].y0;
+        int abs_dx = dx < 0 ? -dx : dx;
+        int abs_dy = dy < 0 ? -dy : dy;
+
+        if (abs_dx > 2.5 * abs_dy && abs_dx >= (int)DETECTION_MIN_DX_HORIZONTAL) {
+            count++;
+            double center_x = ((double)parsed[i].x0 + (double)parsed[i].x1) / 2.0;
+            // PRINTF("  -> Vector orizontal Pixy #%u: (%u,%u)->(%u,%u) | dx=%d, dy=%d | Centru X=%d\r\n",
+            //        (unsigned)count,
+            //        (unsigned)parsed[i].x0, (unsigned)parsed[i].y0,
+            //        (unsigned)parsed[i].x1, (unsigned)parsed[i].y1,
+            //        dx, dy, (int)center_x);
+        }
+    }
+    return count;
+}
+

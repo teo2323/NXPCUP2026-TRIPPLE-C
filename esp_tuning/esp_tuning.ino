@@ -28,6 +28,7 @@ struct TelemetryFrame {
     uint8_t lineCount;
     char whichLines[16];
     uint16_t numVectors;
+    uint32_t horizVectorCount;
     float steeringAngle;
     float motorSpeed;
     bool engineEnabled;
@@ -41,7 +42,7 @@ int telemetryCount = 0;
 unsigned long telemetrySeqCounter = 0;
 
 void processTelemetryLine(const String& line) {
-    // Format: TELEM:lines=2|which=BOTH|num_vec=3|steer=-12.50|speed=70|eng=1|batt=7.40
+    // Format: TELEM:lines=2|which=BOTH|num_vec=3|horiz_cnt=5|steer=-12.50|speed=70|eng=1|batt=7.40
     if (!line.startsWith("TELEM:")) return;
 
     TelemetryFrame frame;
@@ -50,6 +51,7 @@ void processTelemetryLine(const String& line) {
     frame.lineCount = 0;
     strcpy(frame.whichLines, "NONE");
     frame.numVectors = 0;
+    frame.horizVectorCount = 0;
     frame.steeringAngle = 0.0f;
     frame.motorSpeed = 0.0f;
     frame.engineEnabled = false;
@@ -71,6 +73,7 @@ void processTelemetryLine(const String& line) {
             if (key == "lines") frame.lineCount = (uint8_t)val.toInt();
             else if (key == "which") strncpy(frame.whichLines, val.c_str(), sizeof(frame.whichLines) - 1);
             else if (key == "num_vec") frame.numVectors = (uint16_t)val.toInt();
+            else if (key == "horiz_cnt") frame.horizVectorCount = (uint32_t)val.toInt();
             else if (key == "steer") frame.steeringAngle = val.toFloat();
             else if (key == "speed") frame.motorSpeed = val.toFloat();
             else if (key == "eng") frame.engineEnabled = (val.toInt() > 0);
@@ -226,6 +229,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <div class="metric-box">
           <div class="metric-title">Vectori Detectați</div>
           <div id="metric_vecs" class="metric-val">0</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-title">Vectori Orizontali</div>
+          <div id="metric_horiz_cnt" class="metric-val">0</div>
         </div>
         <div class="metric-box">
           <div class="metric-title">Tensiune Baterie</div>
@@ -451,6 +458,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       linesElem.innerHTML = `<span class="line-pill ${pillClass}">${item.lines} (${item.which})</span>`;
       document.getElementById('metric_steer').innerText = (item.steer > 0 ? '+' : '') + item.steer.toFixed(1) + '°';
       document.getElementById('metric_vecs').innerText = item.num_vec;
+      if (document.getElementById('metric_horiz_cnt')) {
+        document.getElementById('metric_horiz_cnt').innerText = item.horiz_cnt !== undefined ? item.horiz_cnt : 0;
+      }
       document.getElementById('metric_batt').innerText = item.batt.toFixed(2) + ' V';
 
       // Update simulated terminal box
@@ -462,7 +472,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         const sec = (item.ts / 1000).toFixed(1);
         let statusColor = item.lines === 2 ? 'val' : (item.lines === 1 ? 'warn' : 'err');
 
-        lineDiv.innerHTML = `<span class="ts">[${sec}s #${item.id}]</span> <span class="tag">TELEM</span> | Linii: <span class="${statusColor}">${item.lines} (${item.which})</span> | Vecs: <span class="val">${item.num_vec}</span> | Steer: <span class="val">${item.steer > 0 ? '+' : ''}${item.steer.toFixed(1)}°</span> | Speed: ${item.speed}% | Batt: ${item.batt.toFixed(2)}V`;
+        lineDiv.innerHTML = `<span class="ts">[${sec}s #${item.id}]</span> <span class="tag">TELEM</span> | Linii: <span class="${statusColor}">${item.lines} (${item.which})</span> | Vecs: <span class="val">${item.num_vec}</span> | Horiz: <span class="val">${item.horiz_cnt !== undefined ? item.horiz_cnt : 0}</span> | Steer: <span class="val">${item.steer > 0 ? '+' : ''}${item.steer.toFixed(1)}°</span> | Speed: ${item.speed}% | Batt: ${item.batt.toFixed(2)}V`;
 
         box.appendChild(lineDiv);
 
@@ -611,6 +621,7 @@ void handleGetTelemetry() {
         json += ",\"lines\":" + String(f.lineCount);
         json += ",\"which\":\"" + String(f.whichLines) + "\"";
         json += ",\"num_vec\":" + String(f.numVectors);
+        json += ",\"horiz_cnt\":" + String(f.horizVectorCount);
         json += ",\"steer\":" + String(f.steeringAngle, 2);
         json += ",\"speed\":" + String(f.motorSpeed, 1);
         json += ",\"eng\":" + String(f.engineEnabled ? 1 : 0);
@@ -632,6 +643,7 @@ void handleGetTelemetry() {
             json += ",\"lines\":" + String(f.lineCount);
             json += ",\"which\":\"" + String(f.whichLines) + "\"";
             json += ",\"num_vec\":" + String(f.numVectors);
+            json += ",\"horiz_cnt\":" + String(f.horizVectorCount);
             json += ",\"steer\":" + String(f.steeringAngle, 2);
             json += ",\"speed\":" + String(f.motorSpeed, 1);
             json += ",\"eng\":" + String(f.engineEnabled ? 1 : 0);

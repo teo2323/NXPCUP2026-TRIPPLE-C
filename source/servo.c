@@ -30,7 +30,7 @@ void TestServo(){
 			while(Delay){
 				Delay--;
 			}
-			PRINTF("Steer: %d\n", SteerStrength);
+			// PRINTF("Steer: %d\n", SteerStrength);
 			Steer(SteerStrength);
 		}
 	}
@@ -39,14 +39,14 @@ void TestServo(){
 void TestServoRightLeft()
 {
     extern uint32_t SystemCoreClock;
-    PRINTF("Servo Test: 3 seconds to the right...\r\n");
+    // PRINTF("Servo Test: 3 seconds to the right...\r\n");
     Steer(30.0); /* Steer right */
     SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
 
-    PRINTF("Servo Test: 7 seconds to the left...\r\n");
+    // PRINTF("Servo Test: 7 seconds to the left...\r\n");
     Steer(-30.0); /* Steer left */
     SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
 
-    PRINTF("Servo Test: Centering...\r\n");
+    // PRINTF("Servo Test: Centering...\r\n");
     Steer(0.0); /* Center steering */
 }

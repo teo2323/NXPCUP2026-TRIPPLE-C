@@ -72,46 +72,55 @@ int main(void)
         Wifi_Process_Rx(); // Procesează datele primite de la modulul Wi-Fi
 
         // Measure distance in front of the vehicle using ultrasonic sensor 
-        float distance_cm = Ultrasonic_ReadDistanceCm();
+        // float distance_cm = Ultrasonic_ReadDistanceCm();
 
-        if (distance_cm > 0.0f && distance_cm <= OBSTACLE_STOP_DIST_CM) {
-            if (++obstacle_detected_count >= OBSTACLE_CONFIRM_COUNT) {
-                obstacle_detected_count = OBSTACLE_CONFIRM_COUNT; // Prevenim overflow
-                PRINTF("[OBSTACLE] Obstacle detected at %d cm! Braking...\r\n", (int)distance_cm);
-                HbridgeBrake(&g_hbridge);
-                pixy_set_led(&cam1, 255, 0, 0); // Pixy Red LED: STOPPED AT OBSTACLE
-                continue; // Menținem frâna fără a bloca bucla
-            }
-        } else {
-            if (obstacle_detected_count >= OBSTACLE_CONFIRM_COUNT) {
-                PRINTF("[OBSTACLE] Path clear (%d cm)! Resuming movement...\r\n", (int)distance_cm);
-                pixy_set_led(&cam1, 0, 255, 0); // Pixy Green LED: Resumed
-            }
-            // Reset counter if the path is clear or out-of-range timeout
-            obstacle_detected_count = 0;
-        }
+        // if (distance_cm > 0.0f && distance_cm <= OBSTACLE_STOP_DIST_CM) {
+        //     if (++obstacle_detected_count >= OBSTACLE_CONFIRM_COUNT) {
+        //         obstacle_detected_count = OBSTACLE_CONFIRM_COUNT; // Prevenim overflow
+        //         PRINTF("[OBSTACLE] Obstacle detected at %d cm! Braking...\r\n", (int)distance_cm);
+        //         HbridgeBrake(&g_hbridge);
+        //         pixy_set_led(&cam1, 255, 0, 0); // Pixy Red LED: STOPPED AT OBSTACLE
+        //         continue; // Menținem frâna fără a bloca bucla
+        //     }
+        // } else {
+        //     if (obstacle_detected_count >= OBSTACLE_CONFIRM_COUNT) {
+        //         PRINTF("[OBSTACLE] Path clear (%d cm)! Resuming movement...\r\n", (int)distance_cm);
+        //         pixy_set_led(&cam1, 0, 255, 0); // Pixy Green LED: Resumed
+        //     }
+        //     // Reset counter if the path is clear or out-of-range timeout
+        //     obstacle_detected_count = 0;
+        // }
 
-        // Periodic debug output over serial (throttled every 20 iterations) 
-        if (++ultrasonic_print_counter >= 20U) {
-            ultrasonic_print_counter = 0U;
+        // // Periodic debug output over serial (throttled every 20 iterations) 
+        // if (++ultrasonic_print_counter >= 20U) {
+        //     ultrasonic_print_counter = 0U;
             
-            if (distance_cm >= 0.0f) {
-                PRINTF("[ULTRASONIC] Distance: %d cm\r\n", (int)distance_cm);
-            } else if (distance_cm == -1.0f) {
-                PRINTF("[ULTRASONIC Err -1] Echo stayed LOW (Trigger not sent or sensor not powered)\r\n");
-            } else if (distance_cm == -2.0f) {
-                PRINTF("[ULTRASONIC Err -2] Echo stayed HIGH too long (out of range timeout)\r\n");
-            } else if (distance_cm == -3.0f) {
-                PRINTF("[ULTRASONIC Err -3] Echo duration was 0 us ERROR\r\n");
-            } else if (distance_cm == -4.0f) {
-                PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
-            }
-        }
+        //     if (distance_cm >= 0.0f) {
+        //         PRINTF("[ULTRASONIC] Distance: %d cm\r\n", (int)distance_cm);
+        //     } else if (distance_cm == -1.0f) {
+        //         PRINTF("[ULTRASONIC Err -1] Echo stayed LOW (Trigger not sent or sensor not powered)\r\n");
+        //     } else if (distance_cm == -2.0f) {
+        //         PRINTF("[ULTRASONIC Err -2] Echo stayed HIGH too long (out of range timeout)\r\n");
+        //     } else if (distance_cm == -3.0f) {
+        //         PRINTF("[ULTRASONIC Err -3] Echo duration was 0 us ERROR\r\n");
+        //     } else if (distance_cm == -4.0f) {
+        //         PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
+        //     }
+        // }
         
         /* Maintain continuous dynamic motor speed rate */
         if (g_engine_enabled != last_printed_engine_state) {
             last_printed_engine_state = g_engine_enabled;
         }
+
+        static uint32_t g_horizontal_vector_count = 0U;
+        static bool last_engine_state = false;
+
+        /* Reset counter on motor start (rising edge of g_engine_enabled) */
+        if (g_engine_enabled && !last_engine_state) {
+            g_horizontal_vector_count = 0U;
+        }
+        last_engine_state = g_engine_enabled;
 
         current_speed = g_engine_enabled ? (int)g_motor_speed : 0;
         HbridgeSpeed(&g_hbridge, current_speed, current_speed);
@@ -120,6 +129,16 @@ int main(void)
 
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
             Wifi_Process_Rx();
+
+            // nr of  horizontal lines 
+            // g_horizontal_vector_count += (uint32_t)detection_count_horizontal_vectors(vectors, num_vectors);
+            uint32_t horiz_in_frame = (uint32_t)detection_count_horizontal_vectors(vectors, num_vectors);
+            if (horiz_in_frame > 0) {
+                g_horizontal_vector_count += horiz_in_frame;
+                PRINTF("[PIXY HORIZONTAL] Detectat %u linie/linii orizontala/e in cadrul curent! Total acumulat: %u\r\n",
+                       (unsigned)horiz_in_frame, (unsigned)g_horizontal_vector_count);
+            }
+
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
 
@@ -205,7 +224,6 @@ int main(void)
 
                     // PRINTF("[Turn] Horizontal vector detected | center_x: %d | dir: %s | Steer: %d deg\r\n",
                     //        (int)turn.center_x, turn.turn_left ? "LEFT" : "RIGHT", (int)steer_angle);
-
                     // PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
                 }
                 else {
@@ -223,7 +241,7 @@ int main(void)
                     //     fflush(stdout);
                     // }
 
-                    // PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
+                    PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
                 }
             }
 
@@ -261,7 +279,7 @@ int main(void)
                     }
                 }
 
-                Wifi_SendTelemetry(line_cnt, which_str, num_vectors, last_steering_angle, (double)current_speed, g_engine_enabled, 7.40);
+                Wifi_SendTelemetry(line_cnt, which_str, num_vectors, g_horizontal_vector_count, last_steering_angle, (double)current_speed, g_engine_enabled, 7.40);
             }
         }
     }

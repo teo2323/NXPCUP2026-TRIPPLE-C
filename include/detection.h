@@ -21,7 +21,7 @@ extern "C" {
 #define DUAL_LINE_HALF_TRACK_DEFAULT   25.0  /* Half track width in pixels (~50px full track) */
 #define DUAL_LINE_STEERING_ANGLE_WEIGHT 1.0  /* Weight factor for line angle heading */
 #define DUAL_LINE_OFFSET_WEIGHT        0.8  /* Weight factor for center offset correction */
-#define DETECTION_MIN_DX_HORIZONTAL    8    /* Minimum |dx| in pixels for a vector to be considered horizontal */
+#define DETECTION_MIN_DX_HORIZONTAL    15   /* Minimum |dx| in pixels for a vector to be considered horizontal */
 #define TURN_TRACK_CLOSED_ANGLE        1.6  /* Raw angle output for closed turn: 1.6 * 30 = 48 -> clamped to ±45° */
 
 
@@ -145,6 +145,9 @@ void detection_process_dual_lines(const uint16_t *raw_vectors,
 bool detection_detect_turn_track(const uint16_t *raw_vectors,
                                  size_t num_vectors,
                                  turn_track_result_t *result);
+
+size_t detection_count_horizontal_vectors(const uint16_t *raw_vectors,
+                                        size_t num_vectors);
 
 void detection_debug_vectors(const uint16_t *raw_vectors, size_t num_vectors);
 

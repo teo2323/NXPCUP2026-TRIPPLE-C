@@ -52,6 +52,7 @@ void Wifi_ParseCommand(const char *cmd);
 void Wifi_SendTelemetry(uint8_t line_count,
                         const char *which_lines,
                         size_t num_vectors,
+                        uint32_t horiz_count,
                         double steering_angle,
                         double motor_speed,
                         bool engine_enabled,
