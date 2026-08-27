@@ -10,11 +10,11 @@
 #define STEERING_D_LEFT       0.2
 
 // Physical steering limits
-#define STEERING_LIMIT_RIGHT  45
-#define STEERING_LIMIT_LEFT  -45
+#define STEERING_LIMIT_RIGHT  50
+#define STEERING_LIMIT_LEFT  -50
 
 // Steering angle offset
-#define STEERING_OFFSET      0
+#define STEERING_OFFSET      -10
 
 // Wheel speeds
 #define SPEED_RIGHT           40

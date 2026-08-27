@@ -49,7 +49,7 @@ int main(void)
 
     /* 1. Continuous H-bridge drive speed */
     HbridgeSpeed(&g_hbridge, 0, 0);
-    Steer(0.0);
+    Steer(0);
     //TestServo();
 
     double last_steering_angle = 0.0;
