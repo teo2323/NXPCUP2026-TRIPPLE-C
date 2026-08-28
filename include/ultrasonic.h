@@ -15,6 +15,11 @@ extern "C" {
 void Ultrasonic_Init(void);
 float Ultrasonic_ReadDistanceCm(void);
 
+/* Non-blocking API functions */
+void  Ultrasonic_StartTrigger(void);
+float Ultrasonic_GetDistanceCm(void);
+void  GPIO40_IRQHandler(void);
+
 #ifdef __cplusplus
 }
 #endif

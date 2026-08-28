@@ -56,11 +56,47 @@ static void LPUART_SendChar_NonBlocking(char c)
     Wifi_Flush_Tx();
 }
 
+#define WIFI_RX_RING_SIZE 256
+
+static volatile char s_wifi_rx_ring[WIFI_RX_RING_SIZE];
+static volatile uint16_t s_wifi_rx_head = 0;
+static volatile uint16_t s_wifi_rx_tail = 0;
+
+void LP_FLEXCOMM3_IRQHandler(void)
+{
+    uint32_t flags = LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL);
+
+    if (flags & (kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag | kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag))
+    {
+        LPUART_ClearStatusFlags(LP_FLEXCOMM3_PERIPHERAL,
+                                kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag |
+                                kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag);
+    }
+
+    while (((LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL) & kLPUART_RxDataRegFullFlag) != 0U) ||
+           (LPUART_GetRxFifoCount(LP_FLEXCOMM3_PERIPHERAL) > 0U))
+    {
+        char c = (char)LPUART_ReadByte(LP_FLEXCOMM3_PERIPHERAL);
+        uint16_t next_head = (s_wifi_rx_head + 1U) % WIFI_RX_RING_SIZE;
+        if (next_head != s_wifi_rx_tail)
+        {
+            s_wifi_rx_ring[s_wifi_rx_head] = c;
+            s_wifi_rx_head = next_head;
+        }
+    }
+    SDK_ISR_EXIT_BARRIER;
+}
+
 void Wifi_Init(void)
 {
     tx_head = 0;
     tx_tail = 0;
     rx_idx = 0;
+    s_wifi_rx_head = 0;
+    s_wifi_rx_tail = 0;
+
+    LPUART_EnableInterrupts(LP_FLEXCOMM3_PERIPHERAL, kLPUART_RxDataRegFullInterruptEnable | kLPUART_RxOverrunInterruptEnable);
+    EnableIRQ(LP_FLEXCOMM3_IRQn);
 }
 
 void Wifi_SendString(const char *str)
@@ -183,23 +219,11 @@ void Wifi_Process_Rx(void)
     // Always flush non-blocking UART TX ring buffer
     Wifi_Flush_Tx();
 
-    uint32_t flags = LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL);
-
-    // 1. Curățare erori de linie LPUART
-    if (flags & (kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag | kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag))
+    // Process all bytes received in s_wifi_rx_ring by ISR
+    while (s_wifi_rx_head != s_wifi_rx_tail)
     {
-        LPUART_ClearStatusFlags(LP_FLEXCOMM3_PERIPHERAL,
-                                kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag |
-                                kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag);
-        // Reset buffer index on line error/overrun to prevent corrupted string accumulation
-        rx_idx = 0U;
-    }
-
-    // 2. Citire caractere din buffer-ul hardware
-    while (((LPUART_GetStatusFlags(LP_FLEXCOMM3_PERIPHERAL) & kLPUART_RxDataRegFullFlag) != 0U) ||
-           (LPUART_GetRxFifoCount(LP_FLEXCOMM3_PERIPHERAL) > 0U))
-    {
-        char c = (char)LPUART_ReadByte(LP_FLEXCOMM3_PERIPHERAL);
+        char c = s_wifi_rx_ring[s_wifi_rx_tail];
+        s_wifi_rx_tail = (s_wifi_rx_tail + 1U) % WIFI_RX_RING_SIZE;
 
         if (c == ';' || c == '\n' || c == '\r')
         {
@@ -218,7 +242,6 @@ void Wifi_Process_Rx(void)
             }
             else
             {
-                // Buffer overflow protection: reset on overflow to avoid string mangling
                 rx_idx = 0U;
             }
         }

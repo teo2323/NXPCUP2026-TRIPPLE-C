@@ -1,79 +1,116 @@
 #include "ultrasonic.h"
-#include "fsl_gpio.h" // GPIO functions such as GPIO_PinWrite and GPIO_PinRead
-#include "fsl_clock.h" // functions for clock configuration, if needed
+#include "fsl_gpio.h"
+#include "fsl_clock.h"
 #include "fsl_common.h" 
 #include "pin_mux.h"
 
-// import the frequency of the proccesor clock defined in SDK 
 extern uint32_t SystemCoreClock;
+
+typedef enum {
+    ULTRASONIC_STATE_IDLE = 0,
+    ULTRASONIC_STATE_WAIT_RISING,
+    ULTRASONIC_STATE_WAIT_FALLING
+} ultrasonic_state_t;
+
+static volatile ultrasonic_state_t s_ultra_state = ULTRASONIC_STATE_IDLE;
+static volatile uint32_t s_echo_start_cycles = 0;
+static volatile uint32_t s_echo_end_cycles = 0;
+static volatile float s_latest_distance_cm = -1.0f;
+static uint32_t s_last_trig_cycles = 0;
 
 void Ultrasonic_Init(void)
 {
-    // enable internal CPU hardware cycle counter for accurate timing
     MSDK_EnableCpuCycleCounter();
-    // set the Trigger pin as output and initialize it to LOW
-    // GPIO_PinWrite(PORT, PIN, 0U) 
     GPIO_PinWrite(BOARD_INITPINS_senzor2_trig_GPIO, BOARD_INITPINS_senzor2_trig_PIN, 0U);
+
+    /* Configure GPIO Echo pin interrupt on either edge */
+    GPIO_SetPinInterruptConfig(BOARD_INITPINS_senzor2_echo_GPIO, BOARD_INITPINS_senzor2_echo_PIN, kGPIO_InterruptEitherEdge);
+    EnableIRQ(GPIO40_IRQn);
 }
 
-float Ultrasonic_ReadDistanceCm(void)
+void GPIO40_IRQHandler(void)
 {
-    // 1 secound = 1,000,000 microseconds
-    // nr of beats of the CPU clock in 1 microsecond
+    uint32_t flags = GPIO_GpioGetInterruptFlags(BOARD_INITPINS_senzor2_echo_GPIO);
+    if (flags & (1U << BOARD_INITPINS_senzor2_echo_PIN))
+    {
+        GPIO_PinClearInterruptFlag(BOARD_INITPINS_senzor2_echo_GPIO, BOARD_INITPINS_senzor2_echo_PIN);
+
+        uint32_t current_cycles = MSDK_GetCpuCycleCount();
+        uint32_t pin_val = GPIO_PinRead(BOARD_INITPINS_senzor2_echo_GPIO, BOARD_INITPINS_senzor2_echo_PIN);
+
+        if (pin_val != 0U) // Echo went HIGH (Rising Edge)
+        {
+            s_echo_start_cycles = current_cycles;
+            s_ultra_state = ULTRASONIC_STATE_WAIT_FALLING;
+        }
+        else // Echo went LOW (Falling Edge)
+        {
+            if (s_ultra_state == ULTRASONIC_STATE_WAIT_FALLING)
+            {
+                s_echo_end_cycles = current_cycles;
+                uint32_t cycles_per_us = SystemCoreClock / 1000000U;
+                if (cycles_per_us == 0U) cycles_per_us = 150U;
+
+                uint32_t duration_us = (s_echo_end_cycles - s_echo_start_cycles) / cycles_per_us;
+                // HC-SR04 valid physical range: 2 cm (~116 us) to 400 cm (~23300 us)
+                // Any pulse < 116 us is electrical noise/glitch from motor PWM switching and MUST be discarded!
+                if (duration_us >= 116U && duration_us <= 23300U)
+                {
+                    s_latest_distance_cm = (float)duration_us / 58.31f;
+                }
+                s_ultra_state = ULTRASONIC_STATE_IDLE;
+            }
+        }
+    }
+    SDK_ISR_EXIT_BARRIER;
+}
+
+void Ultrasonic_StartTrigger(void)
+{
+    if (s_ultra_state != ULTRASONIC_STATE_IDLE) return;
+
+    uint32_t now = MSDK_GetCpuCycleCount();
     uint32_t cycles_per_us = SystemCoreClock / 1000000U;
-    if (cycles_per_us == 0U) {
-        cycles_per_us = 150U; 
+    if (cycles_per_us == 0U) cycles_per_us = 150U;
+
+    // Minimum 60 ms (60,000 us) inter-trigger interval to prevent acoustic echo overlap
+    if (s_last_trig_cycles != 0U && (now - s_last_trig_cycles) < (60000U * cycles_per_us))
+    {
+        return;
     }
 
-    // Read the iniital state of the Echo pin 
-    uint32_t initial_echo = GPIO_PinRead(BOARD_INITPINS_senzor2_echo_GPIO, BOARD_INITPINS_senzor2_echo_PIN);
+    s_ultra_state = ULTRASONIC_STATE_WAIT_RISING;
+    s_last_trig_cycles = now;
 
-    // Write Trigger: LOW -> delay of 2 microseconds -> HIGH -> delay of 10 microseconds -> LOW
+    // Pulse Trigger: 10us pulse
     GPIO_PinWrite(BOARD_INITPINS_senzor2_trig_GPIO, BOARD_INITPINS_senzor2_trig_PIN, 0U);
     SDK_DelayAtLeastUs(2U, SystemCoreClock);
     GPIO_PinWrite(BOARD_INITPINS_senzor2_trig_GPIO, BOARD_INITPINS_senzor2_trig_PIN, 1U);
     SDK_DelayAtLeastUs(10U, SystemCoreClock);
     GPIO_PinWrite(BOARD_INITPINS_senzor2_trig_GPIO, BOARD_INITPINS_senzor2_trig_PIN, 0U);
-    // Echo becomes 1 when the Trigger signal finishes (falling edge: 1 -> 0)
+}
 
-    // we capture the start time in CPU cycles and wait for the Echo pin to go HIGH 
-    uint32_t start_cycles = MSDK_GetCpuCycleCount();
-    uint32_t max_wait_cycles = 10000U * cycles_per_us; 
+float Ultrasonic_GetDistanceCm(void)
+{
+    uint32_t now = MSDK_GetCpuCycleCount();
+    uint32_t cycles_per_us = SystemCoreClock / 1000000U;
+    if (cycles_per_us == 0U) cycles_per_us = 150U;
 
-    while (GPIO_PinRead(BOARD_INITPINS_senzor2_echo_GPIO, BOARD_INITPINS_senzor2_echo_PIN) == 0U)
+    /* Timeout check: if echo didn't finish within 40 ms, reset state */
+    if (s_ultra_state != ULTRASONIC_STATE_IDLE)
     {
-        if ((MSDK_GetCpuCycleCount() - start_cycles) > max_wait_cycles)
+        if ((now - s_last_trig_cycles) > (40000U * cycles_per_us))
         {
-            if (initial_echo != 0U) {
-                return -4.0f; // the initial state of the Echo pin was HIGH  before the Trigger pulse
-            }
-            return -1.0f; // the Echo pin didn't go in HIGH state after the Trigger pulse
+            s_ultra_state = ULTRASONIC_STATE_IDLE;
+            s_latest_distance_cm = -2.0f; // Timeout
         }
     }
+    return s_latest_distance_cm;
+}
 
-    // we capture the time when the Echo pin goes HIGH
-    uint32_t echo_start_cycles = MSDK_GetCpuCycleCount();
-    uint32_t max_echo_cycles = 30000U * cycles_per_us; // ~30ms max (~5m)
-
-    while (GPIO_PinRead(BOARD_INITPINS_senzor2_echo_GPIO, BOARD_INITPINS_senzor2_echo_PIN) != 0U)
-    {
-        if ((MSDK_GetCpuCycleCount() - echo_start_cycles) > max_echo_cycles)
-        {
-            return -2.0f; // The Echo pin remain HIGH for too long (stuck HIGH / out of range)
-        }
-    }
-
-    // we capture the time when the Echo pin goes LOW
-    uint32_t echo_end_cycles = MSDK_GetCpuCycleCount();
-    uint32_t echo_duration_us = (echo_end_cycles - echo_start_cycles) / cycles_per_us;
-
-    if (echo_duration_us == 0U) {
-        return -3.0f; // It is imposible to have a zero duration for the Echo pulse
-    }
-
-    // the speed of sound is aproximately 343m/s
-    // d total = 2d = (speed * time) / 2 
-    // distance in cm = (343 * 100cm/1.000.000us  *  echo_duration_us) / 2  
-    // distance = (0.0343 * t) / 2 = t / (2/0.0343) = t / 58.31
-    return (float)echo_duration_us / 58.31f;
+float Ultrasonic_ReadDistanceCm(void)
+{
+    /* Non-blocking trigger and read: starts trigger if idle and returns latest measurement */
+    Ultrasonic_StartTrigger();
+    return Ultrasonic_GetDistanceCm();
 }
