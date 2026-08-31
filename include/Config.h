@@ -19,7 +19,7 @@
 
 // Physical steering limits
 #define STEERING_LIMIT_RIGHT  45
-#define STEERING_LIMIT_LEFT  -55
+#define STEERING_LIMIT_LEFT  -60
 
 // Steering angle offset
 #define STEERING_OFFSET      -10

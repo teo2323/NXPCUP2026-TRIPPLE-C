@@ -116,28 +116,56 @@ int main(void)
 
         static uint32_t g_horizontal_vector_count = 0U;
         static bool last_engine_state = false;
+        static bool g_horiz_delay_in_progress = false;
+        static uint32_t g_horiz_delay_start_cycles = 0U;
+        static bool g_horiz_speed_reduced = false;
 
-        /* Reset counter on motor start (rising edge of g_engine_enabled) */
+        /* Reset counter, delay, and speed reduction state on motor start (rising edge of g_engine_enabled) */
         if (g_engine_enabled && !last_engine_state) {
             g_horizontal_vector_count = 0U;
+            g_horiz_delay_in_progress = false;
+            g_horiz_speed_reduced = false;
+            pixy_set_led(&cam1, 0, 255, 0); // Pixy Green LED: Active engine
         }
         last_engine_state = g_engine_enabled;
 
-        current_speed = g_engine_enabled ? (int)g_motor_speed : 0;
+        /* Non-blocking state machine for 1-second delay then speed reduction to current_speed / 2 */
+        if (g_horiz_delay_in_progress) {
+            uint32_t now_cycles = MSDK_GetCpuCycleCount();
+            /* 1 second = SystemCoreClock CPU cycles */
+            if ((now_cycles - g_horiz_delay_start_cycles) >= SystemCoreClock) {
+                PRINTF("[PIXY HORIZONTAL] Non-blocking 1s delay finished! Reducing speed to current_speed/2...\r\n");
+                g_horiz_delay_in_progress = false;
+                g_horiz_speed_reduced = true;
+                pixy_set_led(&cam1, 255, 255, 0); // Pixy Yellow LED: Speed reduced
+            }
+        }
+
+        /* Determine motor speed: reduce to current_speed / 2 if 1-second delay after > 2 horizontal vectors has elapsed */
+        if (g_horiz_speed_reduced) {
+            current_speed = g_engine_enabled ? ((int)g_motor_speed / 2) : 0;
+        } else {
+            current_speed = g_engine_enabled ? (int)g_motor_speed : 0;
+        }
         HbridgeSpeed(&g_hbridge, current_speed, current_speed);
-
-
 
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
             Wifi_Process_Rx();
 
-            // nr of  horizontal lines 
-            // g_horizontal_vector_count += (uint32_t)detection_count_horizontal_vectors(vectors, num_vectors);
             uint32_t horiz_in_frame = (uint32_t)detection_count_horizontal_vectors(vectors, num_vectors);
             if (horiz_in_frame > 0) {
                 g_horizontal_vector_count += horiz_in_frame;
                 PRINTF("[PIXY HORIZONTAL] Detectat %u linie/linii orizontala/e in cadrul curent! Total acumulat: %u\r\n",
                        (unsigned)horiz_in_frame, (unsigned)g_horizontal_vector_count);
+
+                /* If > 2 horizontal vectors detected and delay not yet started/reduced, start non-blocking 1-second delay */
+                if (g_engine_enabled && g_horizontal_vector_count > 2U && !g_horiz_delay_in_progress && !g_horiz_speed_reduced) {
+                    PRINTF("[PIXY HORIZONTAL] More than 2 horizontal vectors detected (%u)! Starting non-blocking 1s timer before speed reduction...\r\n",
+                           (unsigned)g_horizontal_vector_count);
+                    g_horiz_delay_in_progress = true;
+                    g_horiz_delay_start_cycles = MSDK_GetCpuCycleCount();
+                    pixy_set_led(&cam1, 0, 255, 255); // Pixy Cyan LED: Timer running
+                }
             }
 
             dual_line_detection_result_t det;
