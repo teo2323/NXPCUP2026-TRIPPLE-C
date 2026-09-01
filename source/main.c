@@ -257,7 +257,7 @@ int main(void)
                 }
                 else {
                     /* No horizontal vector either -> gently decay angle toward straight */
-                    last_steering_angle *= 0.8;
+                    last_steering_angle *= g_decay_factor; // Decay factor (dynamic)
                     if (fabs(last_steering_angle) < 1.0) {
                         last_steering_angle = 0.0;
                     }
@@ -308,7 +308,23 @@ int main(void)
                     }
                 }
 
-                Wifi_SendTelemetry(line_cnt, which_str, num_vectors, g_horizontal_vector_count, last_steering_angle, (double)current_speed, g_engine_enabled, 7.40);
+                int lx0 = 0, ly0 = 0, lx1 = 0, ly1 = 0;
+                int rx0 = 0, ry0 = 0, rx1 = 0, ry1 = 0;
+
+                if (det.left_line_present) {
+                    lx0 = (int)det.left_line.vector.x0;
+                    ly0 = (int)det.left_line.vector.y0;
+                    lx1 = (int)det.left_line.vector.x1;
+                    ly1 = (int)det.left_line.vector.y1;
+                }
+                if (det.right_line_present) {
+                    rx0 = (int)det.right_line.vector.x0;
+                    ry0 = (int)det.right_line.vector.y0;
+                    rx1 = (int)det.right_line.vector.x1;
+                    ry1 = (int)det.right_line.vector.y1;
+                }
+
+                Wifi_SendTelemetry(line_cnt, which_str, num_vectors, g_horizontal_vector_count, last_steering_angle, (double)current_speed, g_engine_enabled, 7.40, lx0, ly0, lx1, ly1, rx0, ry0, rx1, ry1);
             }
         }
     }

@@ -21,6 +21,7 @@ volatile double g_steering_d_left  = DEFAULT_STEERING_D_LEFT;
 // Motor speed and engine state variables (blocked on boot for safety)
 volatile double g_motor_speed   = 70.0;
 volatile bool   g_engine_enabled = false;
+volatile double g_decay_factor  = DECAY_FACTOR;
 
 #define TX_BUF_SIZE 512
 
@@ -114,9 +115,11 @@ void Wifi_SendTelemetry(uint8_t line_count,
                         double steering_angle,
                         double motor_speed,
                         bool engine_enabled,
-                        double battery_volts)
+                        double battery_volts,
+                        int lx0, int ly0, int lx1, int ly1,
+                        int rx0, int ry0, int rx1, int ry1)
 {
-    char buf[128];
+    char buf[256];
     int steer_i = (int)steering_angle;
     int steer_f = (int)(fabs(steering_angle - (double)steer_i) * 100.0);
     if (steer_f < 0) steer_f = -steer_f;
@@ -126,7 +129,7 @@ void Wifi_SendTelemetry(uint8_t line_count,
     if (batt_f < 0) batt_f = -batt_f;
 
     snprintf(buf, sizeof(buf),
-             "TELEM:lines=%u|which=%s|num_vec=%u|horiz_cnt=%u|steer=%d.%02d|speed=%d|eng=%d|batt=%d.%02d\r\n",
+             "TELEM:lines=%u|which=%s|num_vec=%u|horiz_cnt=%u|steer=%d.%02d|speed=%d|eng=%d|batt=%d.%02d|lx0=%d|ly0=%d|lx1=%d|ly1=%d|rx0=%d|ry0=%d|rx1=%d|ry1=%d\r\n",
              (unsigned int)line_count,
              which_lines ? which_lines : "NONE",
              (unsigned int)num_vectors,
@@ -134,7 +137,9 @@ void Wifi_SendTelemetry(uint8_t line_count,
              steer_i, steer_f,
              (int)motor_speed,
              engine_enabled ? 1 : 0,
-             batt_i, batt_f);
+             batt_i, batt_f,
+             lx0, ly0, lx1, ly1,
+             rx0, ry0, rx1, ry1);
 
     Wifi_SendString(buf);
 }
@@ -198,6 +203,10 @@ void Wifi_ParseCommand(const char *cmd)
         Steer(0.0);
         Wifi_SendString("ACK: EMERGENCY_STOP = 1\r\n");
         return;
+    }
+    else if (strcmp(key, "DECAY_FACTOR") == 0) {
+        g_decay_factor = (double)val;
+        Wifi_SendString("ACK: DECAY_FACTOR = ");
     }
     else if (strcmp(key, "HEARTBEAT") == 0) {
         Wifi_SendString("ACK: HEARTBEAT = 1\r\n");

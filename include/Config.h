@@ -28,4 +28,6 @@
 #define SPEED_RIGHT           40
 #define SPEED_LEFT            -40
 
+#define DECAY_FACTOR          0.9  // Decay factor for steering angle when no lines are detected
+
 #endif

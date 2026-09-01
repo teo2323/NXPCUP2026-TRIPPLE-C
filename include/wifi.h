@@ -18,6 +18,7 @@ extern volatile double g_steering_d_left;
  */
 extern volatile double g_motor_speed;
 extern volatile bool g_engine_enabled;
+extern volatile double g_decay_factor;
 
 
 /**
@@ -56,6 +57,8 @@ void Wifi_SendTelemetry(uint8_t line_count,
                         double steering_angle,
                         double motor_speed,
                         bool engine_enabled,
-                        double battery_volts);
+                        double battery_volts,
+                        int lx0, int ly0, int lx1, int ly1,
+                        int rx0, int ry0, int rx1, int ry1);
 
 #endif /* WIFI_H_ */
