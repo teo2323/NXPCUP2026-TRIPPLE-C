@@ -1,16 +1,14 @@
 #include "detection.h"
-#include "fsl_debug_console.h"
 #include <math.h>
-#include <stdio.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-size_t detection_parse_vectors(const uint16_t *raw_vectors,
-                               size_t num_vectors,
-                               pixy_vector_t *out_vectors,
-                               size_t max_out)
+static size_t detection_parse_vectors(const uint16_t *raw_vectors,
+                                       size_t num_vectors,
+                                       pixy_vector_t *out_vectors,
+                                       size_t max_out)
 {
     if (raw_vectors == NULL || out_vectors == NULL) {
         return 0;
@@ -29,7 +27,7 @@ size_t detection_parse_vectors(const uint16_t *raw_vectors,
     return count;
 }
 
-double detection_vector_length(const pixy_vector_t *vec)
+static double detection_vector_length(const pixy_vector_t *vec)
 {
     if (vec == NULL) return 0.0;
 
@@ -38,7 +36,7 @@ double detection_vector_length(const pixy_vector_t *vec)
     return sqrt((double)(dx * dx + dy * dy));
 }
 
-double detection_vector_angle_deg(const pixy_vector_t *vec)
+static double detection_vector_angle_deg(const pixy_vector_t *vec)
 {
     if (vec == NULL) return 0.0;
 
@@ -52,7 +50,7 @@ double detection_vector_angle_deg(const pixy_vector_t *vec)
     }
 }
 
-double detection_vector_inverse_slope(const pixy_vector_t *vec)
+static double detection_vector_inverse_slope(const pixy_vector_t *vec)
 {
     if (vec == NULL) return 0.0;
 
@@ -63,10 +61,10 @@ double detection_vector_inverse_slope(const pixy_vector_t *vec)
     return ((double)vec->x0 - (double)vec->x1) / diff_y;
 }
 
-size_t detection_filter_vertical(const pixy_vector_t *in,
-                                 size_t in_count,
-                                 pixy_vector_t *out,
-                                 double min_dy_pixels)
+static size_t detection_filter_vertical(const pixy_vector_t *in,
+                                         size_t in_count,
+                                         pixy_vector_t *out,
+                                         double min_dy_pixels)
 {
     if (in == NULL || out == NULL) return 0;
 
@@ -92,12 +90,12 @@ static double get_vector_bottom_y(const pixy_vector_t *vec)
     return (vec->y0 > vec->y1) ? (double)vec->y0 : (double)vec->y1;
 }
 
-void detection_classify_left_right(const pixy_vector_t *vectors,
-                                   size_t count,
-                                   pixy_vector_t *left_vecs,
-                                   size_t *left_count,
-                                   pixy_vector_t *right_vecs,
-                                   size_t *right_count)
+static void detection_classify_left_right(const pixy_vector_t *vectors,
+                                           size_t count,
+                                           pixy_vector_t *left_vecs,
+                                           size_t *left_count,
+                                           pixy_vector_t *right_vecs,
+                                           size_t *right_count)
 {
     if (left_count)  *left_count = 0;
     if (right_count) *right_count = 0;
@@ -122,9 +120,9 @@ void detection_classify_left_right(const pixy_vector_t *vectors,
     if (right_count) *right_count = r_cnt;
 }
 
-bool detection_extract_left_line_track(const pixy_vector_t *vectors,
-                                       size_t count,
-                                       line_track_t *line)
+static bool detection_extract_left_line_track(const pixy_vector_t *vectors,
+                                               size_t count,
+                                               line_track_t *line)
 {
     if (line == NULL) return false;
 
@@ -173,9 +171,9 @@ bool detection_extract_left_line_track(const pixy_vector_t *vectors,
     return true;
 }
 
-bool detection_extract_right_line_track(const pixy_vector_t *vectors,
-                                        size_t count,
-                                        line_track_t *line)
+static bool detection_extract_right_line_track(const pixy_vector_t *vectors,
+                                                size_t count,
+                                                line_track_t *line)
 {
     if (line == NULL) return false;
 
@@ -224,10 +222,10 @@ bool detection_extract_right_line_track(const pixy_vector_t *vectors,
     return true;
 }
 
-void detection_calculate_dual_line_steering(const line_track_t *left,
-                                             const line_track_t *right,
-                                             double half_track_width,
-                                             dual_line_detection_result_t *result)
+static void detection_calculate_dual_line_steering(const line_track_t *left,
+                                                     const line_track_t *right,
+                                                     double half_track_width,
+                                                     dual_line_detection_result_t *result)
 {
     if (result == NULL) return;
 
@@ -357,8 +355,7 @@ bool detection_detect_turn_track(const uint16_t *raw_vectors,
     if (parsed_count == 0) return false;
 
     /* Step 2: Filter for horizontal-oriented vectors.
-     * A vector is horizontal when |dx| > |dy| AND |dx| >= DETECTION_MIN_DX_HORIZONTAL.
-     * This rejects vertical track lines and short noise vectors. */
+     * A vector is horizontal when |dx| > 2.5 * |dy| AND |dx| >= DETECTION_MIN_DX_HORIZONTAL. */
     pixy_vector_t horiz[16];
     size_t horiz_count = 0;
 
@@ -377,17 +374,13 @@ bool detection_detect_turn_track(const uint16_t *raw_vectors,
     if (horiz_count == 0) return false;
 
     /* Step 3: Score each horizontal vector and find the best one.
-     * Score = bottom_y: the y-coordinate of the endpoint closest to the car.
-     * Higher bottom_y = closer to car = more relevant for turn decision.
-     *
-     * IMPROVEMENT: A secondary score factor could be vector length (abs_dx),
-     * preferring longer, more reliable horizontal lines over short ones. */
+     * Score = bottom_y: the y-coordinate of the endpoint closest to the car. */
     size_t best_idx   = 0;
     double best_score = -1.0;
 
     for (size_t i = 0; i < horiz_count; i++) {
         double bot_y = get_vector_bottom_y(&horiz[i]);
-        double score = bot_y;   /* Primary: highest y = closest to car */
+        double score = bot_y;
 
         if (score > best_score) {
             best_score = score;
@@ -403,31 +396,15 @@ bool detection_detect_turn_track(const uint16_t *raw_vectors,
     double center_x = ((double)best->x0 + (double)best->x1) / 2.0;
     double bot_y    = get_vector_bottom_y(best);
 
-    /* Step 5: Determine turn direction from the slope (dy/dx) of the horizontal vector.
-     *
-     * The Pixy2 frame has y=0 at the top (far from car) and y=51 at the bottom (close to car).
-     * At a track turn, the horizontal end-of-track vector is tilted by the curve:
-     *
-     *   RIGHT turn: the right side of the vector is closer to the car (higher y).
-     *               Going left-to-right (dx > 0), y increases (dy > 0) -> same sign -> RIGHT.
-     *
-     *   LEFT  turn: the left side of the vector is closer to the car (higher y).
-     *               Going left-to-right (dx > 0), y decreases (dy < 0) -> opposite sign -> LEFT.
-     *
-     * Rule: turn_left = (dx and dy have OPPOSITE signs), i.e. dx * dy < 0.
-     * If the vector is perfectly horizontal (dy == 0), fall back to midpoint comparison. */
+    /* Step 5: Determine turn direction from slope */
     bool turn_left;
     if (dy_raw != 0 && dx_raw != 0) {
         turn_left = ((dx_raw > 0 && dy_raw < 0) || (dx_raw < 0 && dy_raw > 0));
     } else {
-        /* Fallback: perfectly horizontal vector -> use midpoint vs frame center */
         turn_left = (center_x < (double)PIXY_FRAME_CENTER_X);
     }
 
-    /* Step 6: Output a closed (committed) turn angle toward the detected direction.
-     * Rather than a proportional correction, the car commits to a full steering
-     * angle in the turn direction so it can recover the track lines after the curve.
-     * TURN_TRACK_CLOSED_ANGLE (1.6) x STEERING_P (30) = 48 -> clamped to +-45 in main.c. */
+    /* Step 6: Output closed turn angle */
     double steering_angle = turn_left ? -TURN_TRACK_CLOSED_ANGLE : +TURN_TRACK_CLOSED_ANGLE;
 
     /* Populate result */
@@ -438,71 +415,6 @@ bool detection_detect_turn_track(const uint16_t *raw_vectors,
     result->steering_angle = steering_angle;
 
     return true;
-}
-
-void detection_debug_vectors(const uint16_t *raw_vectors, size_t num_vectors)
-{
-    PRINTF("\r\n=== [Detection Debug] Raw vectors: %u ===\r\n", (unsigned)num_vectors);
-
-    if (raw_vectors == NULL || num_vectors == 0) {
-        PRINTF("  No raw vectors to process.\r\n");
-        return;
-    }
-
-    /* Parse all raw vectors */
-    pixy_vector_t parsed[16];
-    size_t parsed_count = detection_parse_vectors(raw_vectors, num_vectors, parsed, 16);
-
-    /* Counters for the summary */
-    size_t cnt_vertical_left  = 0;
-    size_t cnt_vertical_right = 0;
-    size_t cnt_horizontal     = 0;
-    size_t cnt_rejected       = 0;
-
-    for (size_t i = 0; i < parsed_count; i++) {
-        const pixy_vector_t *v = &parsed[i];
-
-        int dx     = (int)v->x1 - (int)v->x0;
-        int dy     = (int)v->y1 - (int)v->y0;
-        int abs_dx = dx < 0 ? -dx : dx;
-        int abs_dy = dy < 0 ? -dy : dy;
-
-        /* Replicate vertical filter: |dy| >= DETECTION_MIN_DY_VERTICAL (8px) */
-        bool passes_vertical = (abs_dy >= (int)DETECTION_MIN_DY_VERTICAL);
-
-        /* Replicate horizontal filter: |dx| > |dy| AND |dx| >= DETECTION_MIN_DX_HORIZONTAL (8px) */
-        bool passes_horizontal = (abs_dx > abs_dy && abs_dx >= DETECTION_MIN_DX_HORIZONTAL);
-
-        /* Determine bottom_x for left/right classification (highest Y endpoint) */
-        double bot_x = (v->y0 > v->y1) ? (double)v->x0 : (double)v->x1;
-
-        PRINTF("  [%u] (%u,%u)->(%u,%u) | dx=%d dy=%d | ",
-               (unsigned)i,
-               (unsigned)v->x0, (unsigned)v->y0,
-               (unsigned)v->x1, (unsigned)v->y1,
-               dx, dy);
-
-        if (passes_vertical) {
-            /* Classify as left or right based on bottom_x vs frame center */
-            if (bot_x < PIXY_FRAME_CENTER_X) {
-                PRINTF("VERTICAL -> LEFT  (bot_x=%d)\r\n", (int)bot_x);
-                cnt_vertical_left++;
-            } else {
-                PRINTF("VERTICAL -> RIGHT (bot_x=%d)\r\n", (int)bot_x);
-                cnt_vertical_right++;
-            }
-        } else if (passes_horizontal) {
-            double center_x = ((double)v->x0 + (double)v->x1) / 2.0;
-            const char *dir = (center_x < PIXY_FRAME_CENTER_X) ? "LEFT" : "RIGHT";
-            PRINTF("HORIZONTAL -> TURN %s (center_x=%d)\r\n", dir, (int)center_x);
-            cnt_horizontal++;
-        } else {
-            // PRINTF("REJECTED   (|dx|=%d |dy|=%d - too short or diagonal)\r\n", abs_dx, abs_dy);
-            cnt_rejected++;
-        }
-    }
-
-    // PRINTF("--- Summary: LEFT=%u RIGHT=%u HORIZ=%u REJECTED=%u ---\r\n\r\n", (unsigned)cnt_vertical_left, (unsigned)cnt_vertical_right, (unsigned)cnt_horizontal, (unsigned)cnt_rejected);
 }
 
 size_t detection_count_horizontal_vectors(const uint16_t *raw_vectors, size_t num_vectors)
@@ -521,14 +433,7 @@ size_t detection_count_horizontal_vectors(const uint16_t *raw_vectors, size_t nu
 
         if (abs_dx > 2.5 * abs_dy && abs_dx >= (int)DETECTION_MIN_DX_HORIZONTAL) {
             count++;
-            double center_x = ((double)parsed[i].x0 + (double)parsed[i].x1) / 2.0;
-            // PRINTF("  -> Vector orizontal Pixy #%u: (%u,%u)->(%u,%u) | dx=%d, dy=%d | Centru X=%d\r\n",
-            //        (unsigned)count,
-            //        (unsigned)parsed[i].x0, (unsigned)parsed[i].y0,
-            //        (unsigned)parsed[i].x1, (unsigned)parsed[i].y1,
-            //        dx, dy, (int)center_x);
         }
     }
     return count;
 }
-

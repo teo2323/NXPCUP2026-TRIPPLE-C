@@ -22,7 +22,7 @@ float motor_speed   = 70.0f;
 float decay_factor  = 0.90f;
 bool engine_enabled = false;
 
-/* Telemetry Data Structures & Ring Buffer */
+/* Minimal Telemetry Data Structure & Ring Buffer */
 struct TelemetryFrame {
     unsigned long id;
     unsigned long timestamp;
@@ -31,9 +31,6 @@ struct TelemetryFrame {
     uint16_t numVectors;
     uint32_t horizVectorCount;
     float steeringAngle;
-    float motorSpeed;
-    bool engineEnabled;
-    float batteryVolts;
     int lx0, ly0, lx1, ly1;
     int rx0, ry0, rx1, ry1;
 };
@@ -45,7 +42,6 @@ int telemetryCount = 0;
 unsigned long telemetrySeqCounter = 0;
 
 void processTelemetryLine(const String& line) {
-    // Format: TELEM:lines=2|which=BOTH|num_vec=3|horiz_cnt=5|steer=-12.50|speed=70|eng=1|batt=7.40|lx0=15|ly0=48|lx1=25|ly1=10|rx0=60|ry0=48|rx1=50|ry1=10
     if (!line.startsWith("TELEM:")) return;
 
     TelemetryFrame frame;
@@ -56,9 +52,6 @@ void processTelemetryLine(const String& line) {
     frame.numVectors = 0;
     frame.horizVectorCount = 0;
     frame.steeringAngle = 0.0f;
-    frame.motorSpeed = 0.0f;
-    frame.engineEnabled = false;
-    frame.batteryVolts = 7.40f;
     frame.lx0 = 0; frame.ly0 = 0; frame.lx1 = 0; frame.ly1 = 0;
     frame.rx0 = 0; frame.ry0 = 0; frame.rx1 = 0; frame.ry1 = 0;
 
@@ -80,9 +73,6 @@ void processTelemetryLine(const String& line) {
             else if (key == "num_vec") frame.numVectors = (uint16_t)val.toInt();
             else if (key == "horiz_cnt") frame.horizVectorCount = (uint32_t)val.toInt();
             else if (key == "steer") frame.steeringAngle = val.toFloat();
-            else if (key == "speed") frame.motorSpeed = val.toFloat();
-            else if (key == "eng") frame.engineEnabled = (val.toInt() > 0);
-            else if (key == "batt") frame.batteryVolts = val.toFloat();
             else if (key == "lx0") frame.lx0 = val.toInt();
             else if (key == "ly0") frame.ly0 = val.toInt();
             else if (key == "lx1") frame.lx1 = val.toInt();
@@ -132,10 +122,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NXP Robot - PID & Telemetrie Control Panel</title>
-  <!-- PyScript Engine import for in-browser Python execution -->
-  <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
-  <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
+  <title>NXP Robot - PID Control Panel</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -152,23 +139,29 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
-    .container { width: 100%; max-width: 620px; }
+    .container { width: 100%; max-width: 1200px; }
     .header { text-align: center; margin-bottom: 20px; }
     .header h1 { font-size: 1.75rem; color: var(--accent); margin-bottom: 6px; }
     .header p { color: var(--muted); font-size: 0.9rem; }
     .badge { display: inline-block; background: #0369a1; color: #e0f2fe; font-size: 0.75rem; font-weight: bold; padding: 4px 10px; border-radius: 12px; margin-top: 6px; }
     
+    .dashboard-layout { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; width: 100%; align-items: start; }
+    @media (max-width: 900px) {
+      .dashboard-layout { grid-template-columns: 1fr; }
+    }
+
     .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
     .card-title { font-size: 1.1rem; color: var(--text); margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
     
-    .estop-btn { width: 100%; background: var(--danger); color: #fff; border: none; font-size: 1.25rem; font-weight: 800; padding: 16px; border-radius: 12px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 18px; }
+    .top-controls-card { margin-bottom: 20px; }
+    .estop-btn { width: 100%; background: var(--danger); color: #fff; border: none; font-size: 1.25rem; font-weight: 800; padding: 16px; border-radius: 12px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
     .estop-btn:hover { background: var(--danger-hover); transform: scale(1.01); }
     .estop-btn:active { transform: scale(0.98); }
 
-    .engine-controls { display: flex; gap: 10px; margin-top: 14px; }
-    .btn-start { flex: 1; background: var(--success); color: #052e16; font-size: 1rem; padding: 12px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+    .engine-controls { display: flex; gap: 10px; }
+    .btn-start { flex: 1; background: var(--success); color: #052e16; font-size: 1rem; padding: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
     .btn-start:hover { background: #16a34a; color: #fff; }
-    .btn-pause { flex: 1; background: var(--warning); color: #451a03; font-size: 1rem; padding: 12px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+    .btn-pause { flex: 1; background: var(--warning); color: #451a03; font-size: 1rem; padding: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
     .btn-pause:hover { background: #d97706; color: #fff; }
 
     .status-pill { font-size: 0.85rem; padding: 4px 10px; border-radius: 10px; font-weight: bold; }
@@ -185,21 +178,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     input[type=number] { width: 85px; padding: 6px 8px; background: #0f172a; border: 1px solid var(--border); border-radius: 6px; color: #fff; font-size: 0.95rem; text-align: center; }
     .btn { background: var(--accent); color: #0f172a; border: none; font-weight: bold; padding: 8px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
     .btn:hover { background: var(--accent-hover); color: #fff; }
-    .btn-all { width: 100%; padding: 12px; font-size: 1rem; margin-top: 10px; background: #0284c7; color: #fff; }
+    .btn-all { width: 100%; padding: 12px; font-size: 1rem; margin-top: 10px; background: #0284c7; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
     
-    /* Telemetry & Terminal UI Styles */
-    .term-box { background: #090d16; border: 1px solid var(--border); border-radius: 8px; font-family: monospace; font-size: 0.82rem; height: 230px; overflow-y: auto; padding: 10px; color: #38bdf8; margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
-    .term-line { white-space: pre-wrap; word-break: break-all; }
-    .term-line .ts { color: #64748b; margin-right: 6px; }
-    .term-line .tag { color: #e2e8f0; font-weight: bold; }
-    .term-line .val { color: #4ade80; }
-    .term-line .warn { color: #f59e0b; }
-    .term-line .err { color: #ef4444; }
-    .term-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: 8px; }
-    .term-controls-left { display: flex; gap: 8px; align-items: center; font-size: 0.85rem; color: var(--muted); }
-    .btn-sm { padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; }
-    .btn-json { background: #10b981; color: #042f2e; font-weight: bold; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
-    .btn-json:hover { background: #059669; color: #fff; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
     .metric-box { background: #090d16; border: 1px solid var(--border); border-radius: 8px; padding: 10px; text-align: center; }
     .metric-title { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
@@ -210,13 +190,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .pill-turn { background: #0e7490; color: #67e8f9; border: 1px solid #06b6d4; }
     .pill-none { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; }
 
-    /* Pixy 2D Visualizer & PyScript Styling */
+    /* Pixy 2D Visualizer Styling */
     .pixy-canvas-container { position: relative; width: 100%; background: #030712; border: 1px solid var(--border); border-radius: 10px; padding: 8px; text-align: center; margin-bottom: 8px; }
     #pixyCanvas { width: 100%; max-width: 500px; height: 255px; background: #090d16; border-radius: 8px; display: block; margin: 0 auto; }
     .coords-badge-container { display: flex; flex-direction: column; gap: 6px; font-family: monospace; font-size: 0.82rem; margin-top: 6px; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid var(--border); }
     .coords-left { color: #38bdf8; font-weight: bold; }
     .coords-right { color: #4ade80; font-weight: bold; }
-    .py-analytics-box { background: #090d16; border: 1px solid #0284c7; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 0.82rem; color: #38bdf8; margin-top: 10px; }
 
     #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--success); color: #052e16; padding: 12px 24px; border-radius: 8px; font-weight: bold; opacity: 0; transition: opacity 0.3s; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 1000; }
     #toast.show { opacity: 1; }
@@ -227,191 +206,172 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <div class="container">
     <div class="header">
       <h1>NXP Robot Control Panel</h1>
-      <p>Tuning PID & Telemetrie Consola (Port 80)</p>
+      <p>Tuning PID Control Panel (Port 80)</p>
       <div class="badge">AP: ESP32_Robot_AP2 | http://esp32_2.local</div>
     </div>
 
-    <!-- Emergency Stop Button -->
-    <button class="estop-btn" onclick="triggerEmergencyStop()">FRANA URGENTA (E-STOP)</button>
-
-    <!-- 2D Pixy Camera Frame Visualizer & Line Coords Card -->
-    <div class="card">
+    <!-- Top Section: Start, Stop & Emergency Controls -->
+    <div class="card top-controls-card">
       <div class="card-title">
-        <span>Vizualizator 2D Pixy Camera (78x51 px)</span>
-        <span id="pixy_state_badge" class="line-pill pill-none">0 (NONE)</span>
-      </div>
-
-      <div class="pixy-canvas-container">
-        <canvas id="pixyCanvas" width="390" height="255"></canvas>
-      </div>
-
-      <div class="coords-badge-container">
-        <div class="coords-left" id="coord_left_text">Linia Stanga: (lx0=0, ly0=0) -> (lx1=0, ly1=0) [NEDETECTAT]</div>
-        <div class="coords-right" id="coord_right_text">Linia Dreapta: (rx0=0, ry0=0) -> (rx1=0, ry1=0) [NEDETECTAT]</div>
-      </div>
-    </div>
-
-    <!-- Python PyScript Analytics & Steering Diagram Card -->
-    <div class="card">
-      <div class="card-title">
-        <span>Diagrame Live & Analiza Python (PyScript Engine)</span>
-        <button class="btn btn-sm" onclick="if(window.triggerPyAnalysis) window.triggerPyAnalysis();">Ruleaza Python</button>
-      </div>
-
-      <div style="width: 100%; height: 150px; background: #090d16; border: 1px solid var(--border); border-radius: 8px; padding: 6px; position: relative;">
-        <canvas id="steerChartCanvas" width="550" height="138" style="width: 100%; height: 100%;"></canvas>
-      </div>
-
-      <div id="py_analytics_box" class="py-analytics-box">
-        Engine-ul Python PyScript este gata. Se asteapta cadru telemetrie...
-      </div>
-    </div>
-
-    <!-- Telemetry & Terminal Simulation Card -->
-    <div class="card">
-      <div class="card-title">
-        <span>Telemetrie & Consola Terminal</span>
-        <button class="btn-json" onclick="downloadJSONHistory()">Descarca JSON</button>
-      </div>
-
-      <div class="grid-2">
-        <div class="metric-box">
-          <div class="metric-title">Linii Descoperite</div>
-          <div id="metric_lines" class="metric-val"><span class="line-pill pill-none">0 (NONE)</span></div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-title">Unghi Directie (Steer)</div>
-          <div id="metric_steer" class="metric-val">0.0 deg</div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-title">Vectori Detectati</div>
-          <div id="metric_vecs" class="metric-val">0</div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-title">Vectori Orizontali</div>
-          <div id="metric_horiz_cnt" class="metric-val">0</div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-title">Tensiune Baterie</div>
-          <div id="metric_batt" class="metric-val">7.40 V</div>
-        </div>
-      </div>
-
-      <div class="term-controls">
-        <div class="term-controls-left">
-          <label><input type="checkbox" id="term_autoscroll" checked> Auto-scroll</label>
-        </div>
-        <div style="display:flex; gap:6px;">
-          <button class="btn btn-sm" id="btn_pause_feed" onclick="togglePauseFeed()">Pauza</button>
-          <button class="btn btn-sm" style="background:#475569; color:#fff;" onclick="clearTerminal()">Goleste</button>
-        </div>
-      </div>
-
-      <div id="terminal_box" class="term-box">
-        <div class="term-line"><span class="ts">[SYS]</span> <span class="tag">Consola Telemetrie NXP -> ESP32 conectata. Se asteapta pachete TELEM...</span></div>
-      </div>
-    </div>
-
-    <!-- Engine & Speed Control Card -->
-    <div class="card">
-      <div class="card-title">
-        <span>Control Viteza Motoare</span>
+        <span>Control Motoare & Stare Robot</span>
         <span id="engine_status" class="status-pill status-off">STOPPED</span>
       </div>
-
-      <div class="param-group">
-        <div class="param-header">
-          <span class="param-name">MOTOR_SPEED (Viteza %)</span>
-          <span class="param-val" id="val_SPEED">70%</span>
-        </div>
-        <div class="controls">
-          <input type="range" id="slider_SPEED" min="0" max="100" step="1" value="70" oninput="syncSpeed(this.value)">
-          <input type="number" id="num_SPEED" min="0" max="100" step="1" value="70" oninput="syncSpeedSlider(this.value)">
-          <button class="btn" onclick="saveSpeed()">Set Speed</button>
-        </div>
-      </div>
-
+      <button class="estop-btn" onclick="triggerEmergencyStop()">FRANA URGENTA (E-STOP)</button>
       <div class="engine-controls">
-        <button class="btn-start" onclick="setEngine(1)">PORNESTE MOTOARELE</button>
-        <button class="btn-pause" onclick="setEngine(0)">OPRESTE MOTOARELE</button>
+        <button class="btn-start" onclick="setEngine(1)">PORNESTE MOTOARELE (START)</button>
+        <button class="btn-pause" onclick="setEngine(0)">OPRESTE MOTOARELE (STOP)</button>
       </div>
     </div>
 
-    <!-- PID Proportional Card -->
-    <div class="card">
-      <div class="card-title">Proportional (P Gains)</div>
-      
-      <div class="param-group">
-        <div class="param-header">
-          <span class="param-name">STEERING_P_RIGHT</span>
-          <span class="param-val" id="val_P_RIGHT">0.400</span>
+    <!-- Dashboard 2-Column Grid Layout -->
+    <div class="dashboard-layout">
+      <!-- LEFT SIDE: Plots & Metrics -->
+      <div class="left-column">
+        <!-- 2D Pixy Camera Frame Visualizer Plot Card -->
+        <div class="card">
+          <div class="card-title">
+            <span>Vizualizator 2D Pixy Camera (78x51 px)</span>
+            <span id="pixy_state_badge" class="line-pill pill-none">0 (NONE)</span>
+          </div>
+
+          <div class="pixy-canvas-container">
+            <canvas id="pixyCanvas" width="390" height="255"></canvas>
+          </div>
+
+          <div class="coords-badge-container">
+            <div class="coords-left" id="coord_left_text">Linia Stanga: (lx0=0, ly0=0) -> (lx1=0, ly1=0) [NEDETECTAT]</div>
+            <div class="coords-right" id="coord_right_text">Linia Dreapta: (rx0=0, ry0=0) -> (rx1=0, ry1=0) [NEDETECTAT]</div>
+          </div>
         </div>
-        <div class="controls">
-          <input type="range" id="slider_P_RIGHT" min="0" max="10" step="0.005" value="0.4" oninput="syncVal('P_RIGHT', this.value)">
-          <input type="number" id="num_P_RIGHT" min="0" max="10" step="0.005" value="0.4" oninput="syncSlider('P_RIGHT', this.value)">
-          <button class="btn" onclick="saveParam('STEERING_P_RIGHT', 'P_RIGHT')">Save</button>
+
+        <!-- Live Steering Diagram Plot Card -->
+        <div class="card">
+          <div class="card-title">
+            <span>Diagrame Live</span>
+          </div>
+
+          <div style="width: 100%; height: 150px; background: #090d16; border: 1px solid var(--border); border-radius: 8px; padding: 6px; position: relative;">
+            <canvas id="steerChartCanvas" width="550" height="138" style="width: 100%; height: 100%;"></canvas>
+          </div>
+        </div>
+
+        <!-- Telemetry Summary Card -->
+        <div class="card">
+          <div class="card-title">
+            <span>Telemetrie</span>
+          </div>
+
+          <div class="grid-2">
+            <div class="metric-box">
+              <div class="metric-title">Vectori Detectati</div>
+              <div id="metric_vecs" class="metric-val">0</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-title">Vectori Orizontali</div>
+              <div id="metric_horiz_cnt" class="metric-val">0</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="param-group">
-        <div class="param-header">
-          <span class="param-name">STEERING_P_LEFT</span>
-          <span class="param-val" id="val_P_LEFT">0.400</span>
+      <!-- RIGHT SIDE: Parameter Sliders -->
+      <div class="right-column">
+        <!-- Motor Speed Control Card -->
+        <div class="card">
+          <div class="card-title">
+            <span>Control Viteza Motoare</span>
+          </div>
+
+          <div class="param-group">
+            <div class="param-header">
+              <span class="param-name">MOTOR_SPEED (Viteza %)</span>
+              <span class="param-val" id="val_SPEED">70%</span>
+            </div>
+            <div class="controls">
+              <input type="range" id="slider_SPEED" min="0" max="100" step="1" value="70" oninput="syncSpeed(this.value)">
+              <input type="number" id="num_SPEED" min="0" max="100" step="1" value="70" oninput="syncSpeedSlider(this.value)">
+              <button class="btn" onclick="saveSpeed()">Set Speed</button>
+            </div>
+          </div>
         </div>
-        <div class="controls">
-          <input type="range" id="slider_P_LEFT" min="0" max="10" step="0.005" value="0.4" oninput="syncVal('P_LEFT', this.value)">
-          <input type="number" id="num_P_LEFT" min="0" max="10" step="0.005" value="0.4" oninput="syncSlider('P_LEFT', this.value)">
-          <button class="btn" onclick="saveParam('STEERING_P_LEFT', 'P_LEFT')">Save</button>
+
+        <!-- PID Proportional Card -->
+        <div class="card">
+          <div class="card-title">Proportional (P Gains)</div>
+          
+          <div class="param-group">
+            <div class="param-header">
+              <span class="param-name">STEERING_P_RIGHT</span>
+              <span class="param-val" id="val_P_RIGHT">0.400</span>
+            </div>
+            <div class="controls">
+              <input type="range" id="slider_P_RIGHT" min="0" max="10" step="0.005" value="0.4" oninput="syncVal('P_RIGHT', this.value)">
+              <input type="number" id="num_P_RIGHT" min="0" max="10" step="0.005" value="0.4" oninput="syncSlider('P_RIGHT', this.value)">
+              <button class="btn" onclick="saveParam('STEERING_P_RIGHT', 'P_RIGHT')">Save</button>
+            </div>
+          </div>
+
+          <div class="param-group">
+            <div class="param-header">
+              <span class="param-name">STEERING_P_LEFT</span>
+              <span class="param-val" id="val_P_LEFT">0.400</span>
+            </div>
+            <div class="controls">
+              <input type="range" id="slider_P_LEFT" min="0" max="10" step="0.005" value="0.4" oninput="syncVal('P_LEFT', this.value)">
+              <input type="number" id="num_P_LEFT" min="0" max="10" step="0.005" value="0.4" oninput="syncSlider('P_LEFT', this.value)">
+              <button class="btn" onclick="saveParam('STEERING_P_LEFT', 'P_LEFT')">Save</button>
+            </div>
+          </div>
         </div>
+
+        <!-- PID Derivative Card -->
+        <div class="card">
+          <div class="card-title">Derivativ (D Gains)</div>
+          
+          <div class="param-group">
+            <div class="param-header">
+              <span class="param-name">STEERING_D_RIGHT</span>
+              <span class="param-val" id="val_D_RIGHT">0.200</span>
+            </div>
+            <div class="controls">
+              <input type="range" id="slider_D_RIGHT" min="0" max="10" step="0.005" value="0.2" oninput="syncVal('D_RIGHT', this.value)">
+              <input type="number" id="num_D_RIGHT" min="0" max="10" step="0.005" value="0.2" oninput="syncSlider('D_RIGHT', this.value)">
+              <button class="btn" onclick="saveParam('STEERING_D_RIGHT', 'D_RIGHT')">Save</button>
+            </div>
+          </div>
+
+          <div class="param-group">
+            <div class="param-header">
+              <span class="param-name">STEERING_D_LEFT</span>
+              <span class="param-val" id="val_D_LEFT">0.200</span>
+            </div>
+            <div class="controls">
+              <input type="range" id="slider_D_LEFT" min="0" max="10" step="0.005" value="0.2" oninput="syncVal('D_LEFT', this.value)">
+              <input type="number" id="num_D_LEFT" min="0" max="10" step="0.005" value="0.2" oninput="syncSlider('D_LEFT', this.value)">
+              <button class="btn" onclick="saveParam('STEERING_D_LEFT', 'D_LEFT')">Save</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Decay Factor Card -->
+        <div class="card">
+          <div class="card-title">Decay Factor</div>
+          <div class="param-group">
+            <div class="param-header">
+              <span class="param-name">DECAY_FACTOR</span>
+              <span class="param-val" id="val_DECAY">0.900</span>
+            </div>
+            <div class="controls">
+              <input type="range" id="slider_DECAY" min="0.5" max="1" step="0.005" value="0.9" oninput="syncVal('DECAY', this.value)">
+              <input type="number" id="num_DECAY" min="0.5" max="1" step="0.005" value="0.9" oninput="syncSlider('DECAY', this.value)">
+              <button class="btn" onclick="saveParam('DECAY_FACTOR', 'DECAY')">Save</button>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-all" onclick="saveAllPID()">Salveaza Toti Parametrii PID</button>
       </div>
     </div>
-
-    <!-- PID Derivative Card -->
-    <div class="card">
-      <div class="card-title">Derivativ (D Gains)</div>
-      
-      <div class="param-group">
-        <div class="param-header">
-          <span class="param-name">STEERING_D_RIGHT</span>
-          <span class="param-val" id="val_D_RIGHT">0.200</span>
-        </div>
-        <div class="controls">
-          <input type="range" id="slider_D_RIGHT" min="0" max="10" step="0.005" value="0.2" oninput="syncVal('D_RIGHT', this.value)">
-          <input type="number" id="num_D_RIGHT" min="0" max="10" step="0.005" value="0.2" oninput="syncSlider('D_RIGHT', this.value)">
-          <button class="btn" onclick="saveParam('STEERING_D_RIGHT', 'D_RIGHT')">Save</button>
-        </div>
-      </div>
-
-      <div class="param-group">
-        <div class="param-header">
-          <span class="param-name">STEERING_D_LEFT</span>
-          <span class="param-val" id="val_D_LEFT">0.200</span>
-        </div>
-        <div class="controls">
-          <input type="range" id="slider_D_LEFT" min="0" max="10" step="0.005" value="0.2" oninput="syncVal('D_LEFT', this.value)">
-          <input type="number" id="num_D_LEFT" min="0" max="10" step="0.005" value="0.2" oninput="syncSlider('D_LEFT', this.value)">
-          <button class="btn" onclick="saveParam('STEERING_D_LEFT', 'D_LEFT')">Save</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Decay Factor Card -->
-    <div class="card">
-      <div class="card-title">Decay Factor</div>
-      <div class="param-group">
-        <div class="param-header">
-          <span class="param-name">DECAY_FACTOR</span>
-          <span class="param-val" id="val_DECAY">0.900</span>
-        </div>
-        <div class="controls">
-          <input type="range" id="slider_DECAY" min="0.5" max="1" step="0.005" value="0.9" oninput="syncVal('DECAY', this.value)">
-          <input type="number" id="num_DECAY" min="0.5" max="1" step="0.005" value="0.9" oninput="syncSlider('DECAY', this.value)">
-          <button class="btn" onclick="saveParam('DECAY_FACTOR', 'DECAY')">Save</button>
-        </div>
-      </div>
-    </div>
-
-    <button class="btn btn-all" onclick="saveAllPID()">Salveaza Toti Parametrii PID</button>
   </div>
 
   <div id="toast">Salvat cu succes!</div>
@@ -419,7 +379,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <script>
     window.telemetryHistory = [];
     let lastTelemetryId = 0;
-    let isFeedPaused = false;
 
     const syncVal = (id, val) => {
       document.getElementById('num_' + id).value = val;
@@ -505,18 +464,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       setTimeout(() => { saveParam('STEERING_D_RIGHT', 'D_RIGHT'); }, 500);
       setTimeout(() => { saveParam('STEERING_D_LEFT', 'D_LEFT'); }, 750);
       setTimeout(() => { saveParam('DECAY_FACTOR', 'DECAY'); }, 1000);
-    }
-
-    /* Telemetry & Terminal Functions */
-    const togglePauseFeed = () => {
-      isFeedPaused = !isFeedPaused;
-      const btn = document.getElementById('btn_pause_feed');
-      btn.innerText = isFeedPaused ? 'Reia' : 'Pauza';
-      showToast(isFeedPaused ? 'Feed terminal pus pe pauza' : 'Feed terminal reluat', false);
-    }
-
-    const clearTerminal = () => {
-      document.getElementById('terminal_box').innerHTML = '<div class="term-line"><span class="ts">[SYS]</span> <span class="tag">Terminal curatat.</span></div>';
     }
 
     /* 2D Pixy Frame & Coordinates Canvas Visualizer */
@@ -703,50 +650,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       if (!item) return;
 
       // Update UI cards
-      const linesElem = document.getElementById('metric_lines');
-      let pillClass = 'pill-none';
-      if (item.which === 'BOTH') pillClass = 'pill-both';
-      else if (item.which === 'LEFT' || item.which === 'RIGHT') pillClass = 'pill-single';
-      else if (item.which.indexOf('TURN') !== -1) pillClass = 'pill-turn';
-
-      linesElem.innerHTML = '<span class="line-pill ' + pillClass + '">' + item.lines + ' (' + item.which + ')</span>';
-      document.getElementById('metric_steer').innerText = (item.steer > 0 ? '+' : '') + item.steer.toFixed(1) + ' deg';
       document.getElementById('metric_vecs').innerText = item.num_vec;
       if (document.getElementById('metric_horiz_cnt')) {
         document.getElementById('metric_horiz_cnt').innerText = item.horiz_cnt !== undefined ? item.horiz_cnt : 0;
       }
-      document.getElementById('metric_batt').innerText = item.batt.toFixed(2) + ' V';
 
       // Update 2D Pixy Canvas & Steering Chart
       drawPixyFrame2D(item);
       updateSteerChart(item);
-
-      // Trigger PyScript Python engine analysis if available
-      if (window.triggerPyAnalysis) {
-        try { window.triggerPyAnalysis(); } catch(e) {}
-      }
-
-      // Update simulated terminal box
-      if (!isFeedPaused) {
-        const box = document.getElementById('terminal_box');
-        const lineDiv = document.createElement('div');
-        lineDiv.className = 'term-line';
-
-        const sec = (item.ts / 1000).toFixed(1);
-        let statusColor = item.lines === 2 ? 'val' : (item.lines === 1 ? 'warn' : 'err');
-
-        lineDiv.innerHTML = '<span class="ts">[' + sec + 's #' + item.id + ']</span> <span class="tag">TELEM</span> | Linii: <span class="' + statusColor + '">' + item.lines + ' (' + item.which + ')</span> | Vecs: <span class="val">' + item.num_vec + '</span> | Horiz: <span class="val">' + (item.horiz_cnt !== undefined ? item.horiz_cnt : 0) + '</span> | Steer: <span class="val">' + (item.steer > 0 ? '+' : '') + item.steer.toFixed(1) + ' deg</span> | Speed: ' + item.speed + '% | Batt: ' + item.batt.toFixed(2) + 'V';
-
-        box.appendChild(lineDiv);
-
-        if (document.getElementById('term_autoscroll').checked) {
-          box.scrollTop = box.scrollHeight;
-        }
-
-        while (box.children.length > 200) {
-          box.removeChild(box.firstChild);
-        }
-      }
     }
 
     const pollTelemetry = () => {
@@ -771,34 +682,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         });
     }
 
-    const downloadJSONHistory = () => {
-      if (!window.telemetryHistory || window.telemetryHistory.length === 0) {
-        showToast('Niciun pachet de telemetrie inregistrat inca!', true);
-        return;
-      }
-
-      const exportData = {
-        exported_at: new Date().toISOString(),
-        total_records: window.telemetryHistory.length,
-        records: window.telemetryHistory
-      };
-
-      const jsonStr = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-
-      const nowStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'nxp_telemetry_' + nowStr + '.json';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showToast('S-au descarcat ' + window.telemetryHistory.length + ' inregistrari JSON!', false);
-    }
-
     window.onload = function() {
       fetch('/api/params')
         .then(function(r) { return r.json(); })
@@ -815,37 +698,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
       pollTelemetry();
     }
-  </script>
-
-  <!-- PyScript Python Script Engine Block -->
-  <script type="py">
-    from js import window, document
-
-    def run_py_analysis():
-        try:
-            history = window.telemetryHistory
-            if not history or len(history) == 0:
-                return
-            n = len(history)
-            both = sum(1 for item in history if getattr(item, 'which', '') == 'BOTH')
-            left = sum(1 for item in history if getattr(item, 'which', '') == 'LEFT')
-            right = sum(1 for item in history if getattr(item, 'which', '') == 'RIGHT')
-            turn = sum(1 for item in history if 'TURN' in str(getattr(item, 'which', '')))
-            
-            steers = [float(getattr(x, 'steer', 0)) for x in history]
-            avg_s = sum(steers) / len(steers) if steers else 0.0
-            max_s = max(steers) if steers else 0.0
-            min_s = min(steers) if steers else 0.0
-
-            out = document.getElementById('py_analytics_box')
-            if out:
-                out.innerHTML = f"<b>Python PyScript Engine Analytics:</b><br>" \
-                                f"Total Cadre Procesate: {n} | Ambe Linii: {both} ({both*100//n}%) | Stanga: {left} | Dreapta: {right} | Viraj: {turn}<br>" \
-                                f"Unghi Mediu Steer: {avg_s:.2f} deg | Max Steer Dreapta: +{max_s:.1f} deg | Max Steer Stanga: {min_s:.1f} deg"
-        except Exception as e:
-            pass
-
-    window.triggerPyAnalysis = run_py_analysis
   </script>
 </body>
 </html>
@@ -921,9 +773,6 @@ void handleGetTelemetry() {
         json += ",\"num_vec\":" + String(f.numVectors);
         json += ",\"horiz_cnt\":" + String(f.horizVectorCount);
         json += ",\"steer\":" + String(f.steeringAngle, 2);
-        json += ",\"speed\":" + String(f.motorSpeed, 1);
-        json += ",\"eng\":" + String(f.engineEnabled ? 1 : 0);
-        json += ",\"batt\":" + String(f.batteryVolts, 2);
         json += ",\"lx0\":" + String(f.lx0);
         json += ",\"ly0\":" + String(f.ly0);
         json += ",\"lx1\":" + String(f.lx1);
@@ -951,9 +800,6 @@ void handleGetTelemetry() {
             json += ",\"num_vec\":" + String(f.numVectors);
             json += ",\"horiz_cnt\":" + String(f.horizVectorCount);
             json += ",\"steer\":" + String(f.steeringAngle, 2);
-            json += ",\"speed\":" + String(f.motorSpeed, 1);
-            json += ",\"eng\":" + String(f.engineEnabled ? 1 : 0);
-            json += ",\"batt\":" + String(f.batteryVolts, 2);
             json += ",\"lx0\":" + String(f.lx0);
             json += ",\"ly0\":" + String(f.ly0);
             json += ",\"lx1\":" + String(f.lx1);

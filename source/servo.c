@@ -2,7 +2,7 @@
 #include "peripherals.h"
 #include "fsl_debug_console.h"
 
-#define SERVO_OFFSET 5.0
+#define SERVO_OFFSET -3
 
 void Steer(double angle)
 {

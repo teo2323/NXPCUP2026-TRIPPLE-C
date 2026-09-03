@@ -171,10 +171,7 @@ int main(void)
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
 
-            /* Print per-frame vector categorization over serial:
-             * Shows how each raw vector is classified as VERTICAL LEFT/RIGHT,
-             * HORIZONTAL TURN, or REJECTED by the detection pipeline. */
-            // detection_debug_vectors(vectors, num_vectors);
+
 
             if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present)) {
                 double raw_steering_angle = 0.0;
@@ -324,7 +321,7 @@ int main(void)
                     ry1 = (int)det.right_line.vector.y1;
                 }
 
-                Wifi_SendTelemetry(line_cnt, which_str, num_vectors, g_horizontal_vector_count, last_steering_angle, (double)current_speed, g_engine_enabled, 7.40, lx0, ly0, lx1, ly1, rx0, ry0, rx1, ry1);
+                Wifi_SendTelemetry(line_cnt, which_str, num_vectors, g_horizontal_vector_count, last_steering_angle, lx0, ly0, lx1, ly1, rx0, ry0, rx1, ry1);
             }
         }
     }

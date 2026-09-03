@@ -12,19 +12,13 @@ extern "C" {
 
 /* Default Pixy2 Line Tracking Frame Dimensions */
 #define PIXY_FRAME_WIDTH               78U
-#define PIXY_FRAME_HEIGHT              51U
 #define PIXY_FRAME_CENTER_X            39U
 
 /* Default Detection & Track Constants */
 #define DETECTION_MIN_DY_VERTICAL      8.0
-#define DETECTION_MIN_LEN_DEFAULT      10.0
 #define DUAL_LINE_HALF_TRACK_DEFAULT   25.0  /* Half track width in pixels (~50px full track) */
-#define DUAL_LINE_STEERING_ANGLE_WEIGHT 1.0  /* Weight factor for line angle heading */
-#define DUAL_LINE_OFFSET_WEIGHT        0.8  /* Weight factor for center offset correction */
 #define DETECTION_MIN_DX_HORIZONTAL    15   /* Minimum |dx| in pixels for a vector to be considered horizontal */
-#define TURN_TRACK_CLOSED_ANGLE        1.6  /* Raw angle output for closed turn: 1.6 * 30 = 48 -> clamped to ±45° */
-
-
+#define TURN_TRACK_CLOSED_ANGLE        1.6  /* Raw angle output for closed turn */
 
 /**
  * @brief Pixy Vector structure representing a single detected line vector.
@@ -37,15 +31,6 @@ typedef struct {
     uint8_t  index; /**< Vector index or tracking ID */
     uint8_t  flags; /**< Vector status flags */
 } pixy_vector_t;
-
-/**
- * @brief Identification of track line side.
- */
-typedef enum {
-    LINE_SIDE_UNKNOWN = 0,
-    LINE_SIDE_LEFT    = 1,
-    LINE_SIDE_RIGHT   = 2
-} line_side_t;
 
 /**
  * @brief Structure containing metrics for a single boundary line (Left or Right).
@@ -72,7 +57,7 @@ typedef struct {
     bool          right_line_present;    /**< True if right line is detected */
     
     double        track_center_x;        /**< Estimated track center X at bottom of frame */
-    double        center_offset;         /**< Track center deviation from frame center (39.5) */
+    double        center_offset;         /**< Track center deviation from frame center (39) */
     double        track_width;           /**< Measured track width in pixels */
     
     double        steering_angle;        /**< Final recommended steering angle/slope */
@@ -94,62 +79,27 @@ typedef struct {
     double steering_angle;  /**< Proportional steering angle based on vector offset from center */
 } turn_track_result_t;
 
+/* --- Main Detection API --- */
 
-
-/* --- Vector Parsing & Helper Functions --- */
-
-size_t detection_parse_vectors(const uint16_t *raw_vectors,
-                               size_t num_vectors,
-                               pixy_vector_t *out_vectors,
-                               size_t max_out);
-
-double detection_vector_length(const pixy_vector_t *vec);
-double detection_vector_angle_deg(const pixy_vector_t *vec);
-double detection_vector_inverse_slope(const pixy_vector_t *vec);
-
-/* --- Filtering & Classification Algorithms --- */
-
-size_t detection_filter_vertical(const pixy_vector_t *in,
-                                 size_t in_count,
-                                 pixy_vector_t *out,
-                                 double min_dy_pixels);
-
-
-
-void detection_classify_left_right(const pixy_vector_t *vectors,
-                                   size_t count,
-                                   pixy_vector_t *left_vecs,
-                                   size_t *left_count,
-                                   pixy_vector_t *right_vecs,
-                                   size_t *right_count);
-
-bool detection_extract_left_line_track(const pixy_vector_t *vectors,
-                                       size_t count,
-                                       line_track_t *line);
-
-bool detection_extract_right_line_track(const pixy_vector_t *vectors,
-                                        size_t count,
-                                        line_track_t *line);
-
-/* --- Dual-Line Detection & Steering Algorithms --- */
-
-void detection_calculate_dual_line_steering(const line_track_t *left,
-                                             const line_track_t *right,
-                                             double half_track_width,
-                                             dual_line_detection_result_t *result);
-
+/**
+ * @brief Process raw Pixy vectors to detect dual line tracks and compute steering recommendations.
+ */
 void detection_process_dual_lines(const uint16_t *raw_vectors,
                                   size_t num_vectors,
                                   dual_line_detection_result_t *result);
 
+/**
+ * @brief Detect turn tracks from raw horizontal vectors when no vertical line tracks are visible.
+ */
 bool detection_detect_turn_track(const uint16_t *raw_vectors,
                                  size_t num_vectors,
                                  turn_track_result_t *result);
 
+/**
+ * @brief Count horizontal vectors present in raw vector frame.
+ */
 size_t detection_count_horizontal_vectors(const uint16_t *raw_vectors,
-                                        size_t num_vectors);
-
-void detection_debug_vectors(const uint16_t *raw_vectors, size_t num_vectors);
+                                         size_t num_vectors);
 
 #ifdef __cplusplus
 }

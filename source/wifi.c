@@ -113,9 +113,6 @@ void Wifi_SendTelemetry(uint8_t line_count,
                         size_t num_vectors,
                         uint32_t horiz_count,
                         double steering_angle,
-                        double motor_speed,
-                        bool engine_enabled,
-                        double battery_volts,
                         int lx0, int ly0, int lx1, int ly1,
                         int rx0, int ry0, int rx1, int ry1)
 {
@@ -124,25 +121,20 @@ void Wifi_SendTelemetry(uint8_t line_count,
     int steer_f = (int)(fabs(steering_angle - (double)steer_i) * 100.0);
     if (steer_f < 0) steer_f = -steer_f;
 
-    int batt_i = (int)battery_volts;
-    int batt_f = (int)(fabs(battery_volts - (double)batt_i) * 100.0);
-    if (batt_f < 0) batt_f = -batt_f;
-
     snprintf(buf, sizeof(buf),
-             "TELEM:lines=%u|which=%s|num_vec=%u|horiz_cnt=%u|steer=%d.%02d|speed=%d|eng=%d|batt=%d.%02d|lx0=%d|ly0=%d|lx1=%d|ly1=%d|rx0=%d|ry0=%d|rx1=%d|ry1=%d\r\n",
+             "TELEM:lines=%u|which=%s|num_vec=%u|horiz_cnt=%u|steer=%d.%02d|lx0=%d|ly0=%d|lx1=%d|ly1=%d|rx0=%d|ry0=%d|rx1=%d|ry1=%d\r\n",
              (unsigned int)line_count,
              which_lines ? which_lines : "NONE",
              (unsigned int)num_vectors,
              (unsigned int)horiz_count,
              steer_i, steer_f,
-             (int)motor_speed,
-             engine_enabled ? 1 : 0,
-             batt_i, batt_f,
              lx0, ly0, lx1, ly1,
              rx0, ry0, rx1, ry1);
 
     Wifi_SendString(buf);
 }
+
+
 
 void Wifi_ParseCommand(const char *cmd)
 {

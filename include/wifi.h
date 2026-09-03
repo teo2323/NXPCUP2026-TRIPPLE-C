@@ -43,22 +43,16 @@ void Wifi_SendString(const char *str);
 void Wifi_Flush_Tx(void);
 
 /**
- * @brief Parsează comanda primită sub forma "NUME_PARAMETRU = VAL" și actualizează parametrul corespunzător.
- */
-void Wifi_ParseCommand(const char *cmd);
-
-/**
- * @brief Trimite un pachet de telemetrie către ESP32 peste UART.
+ * @brief Trimite un pachet de telemetrie restrâns către ESP32 peste UART.
  */
 void Wifi_SendTelemetry(uint8_t line_count,
                         const char *which_lines,
                         size_t num_vectors,
                         uint32_t horiz_count,
                         double steering_angle,
-                        double motor_speed,
-                        bool engine_enabled,
-                        double battery_volts,
                         int lx0, int ly0, int lx1, int ly1,
                         int rx0, int ry0, int rx1, int ry1);
+
+
 
 #endif /* WIFI_H_ */
