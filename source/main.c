@@ -19,6 +19,9 @@
 #define MAX_VECTORS          10
 #define AUTOMATED_BASE_SPEED 40
 
+#define OBSTACLE_STOP_DIST_CM 20.0f
+#define OBSTACLE_CONFIRM_COUNT 2 
+
 int main(void)
 {
     uint16_t vectors[MAX_VECTORS * 4];
@@ -58,9 +61,6 @@ int main(void)
 
     Wifi_Init(); // Inițializează modulul Wi-Fi
     Ultrasonic_Init(); // Inițializează senzorul ultrasonic
-
-    #define OBSTACLE_STOP_DIST_CM    20.0f /* Obstacle stop threshold distance (in cm) */
-    #define OBSTACLE_CONFIRM_COUNT   2     /* Number of consecutive readings below threshold required to confirm stop */
 
     static uint32_t ultrasonic_print_counter = 0;
     static uint8_t  obstacle_detected_count  = 0;
@@ -171,86 +171,49 @@ int main(void)
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
 
-
+            static bool was_tracking = false;
 
             if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present)) {
-                double raw_steering_angle = 0.0;
+                double error = det.steering_angle;
 
-                if (det.both_lines_present) {
-                    /* Case 1: 2 Track lines detected -> keep same logic for steering */
-                    double error = det.steering_angle;
-
-                    /* D term: calculated from the raw error */
-                    double derivative = error - previous_error;
-                    previous_error    = error;
-
-                    /* P + D combinate: output = P*error + D*derivative */
-                    double p_term = (error > 0) ? (STEERING_P_RIGHT * error) : (STEERING_P_LEFT * error);
-                    double d_term = (derivative > 0) ? (STEERING_D_RIGHT * derivative) : (STEERING_D_LEFT * derivative);
-                    double steer_angle = p_term + d_term;
-
-                    if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
-                    if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
-
-                    Steer(steer_angle);
-                    last_steering_angle = steer_angle;
-
-                    //PRINTF("Vede ambii vectori\n");
+                /* Reset derivative on mode transition (no-tracking -> tracking) to prevent derivative spike */
+                if (!was_tracking) {
+                    previous_error = error;
+                    was_tracking = true;
                 }
-                else {
 
-                    /* Find slope of the visible track line */
-                    const line_track_t *visible_line = det.left_line_present ? &det.left_line : &det.right_line;
+                double derivative = error - previous_error;
+                previous_error    = error;
 
-                    double slope = visible_line->inverse_slope;
+                /* Unified PID algorithm with single P and single D coefficients */
+                double steer_angle = (STEERING_P * error) + (STEERING_D * derivative);
 
-                    int slope_x100 = (int)(slope * 100.0);
-                    int abs_x100 = slope_x100 < 0 ? -slope_x100 : slope_x100;
+                if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
+                if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
 
-                    // if (det.left_line_present) {
-                    //     PRINTF("Linia stanga prezenta!\r\n");
-                    // } else {
-                    //     PRINTF("Linia dreapta prezenta!\r\n");
-                    // }
-
-                    // if (slope < 0 && slope_x100 / 100 == 0) {
-                    //     PRINTF("Slope: -0.%02d\r\n", abs_x100 % 100);
-                    // } else {
-                    //     PRINTF("Slope: %d.%02d\r\n", slope_x100 / 100, abs_x100 % 100);
-                    // }
-
-                    
-                        double steer_angle = (slope >= 0.0) ? (double)STEERING_LIMIT_LEFT : (double)STEERING_LIMIT_RIGHT;
-                        Steer(steer_angle);
-                        last_steering_angle = steer_angle;
-                    
-                }
+                Steer(steer_angle);
+                last_steering_angle = steer_angle;
             }
             else {
+                was_tracking = false;
+
                 /* 0 track lines detected -> search for horizontal turn-track vector */
                 turn_track_result_t turn;
                 if (detection_detect_turn_track(vectors, num_vectors, &turn)) {
                     /* A horizontal vector found: steer proportionally toward the turn */
                     double error = turn.steering_angle;
 
-                    /* D term: calculated from the raw error */
                     double derivative = error - previous_error;
                     previous_error    = error;
 
-                    /* P*error + D*derivative */
-                    double p_term = (error > 0) ? (STEERING_P_RIGHT * error) : (STEERING_P_LEFT * error);
-                    double d_term = (derivative > 0) ? (STEERING_D_RIGHT * derivative) : (STEERING_D_LEFT * derivative);
-                    double steer_angle = p_term + d_term;
+                    /* Unified PID algorithm for turn track */
+                    double steer_angle = (STEERING_P * error) + (STEERING_D * derivative);
 
                     if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
                     if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
 
                     Steer(steer_angle);
                     last_steering_angle = steer_angle;
-
-                    // PRINTF("[Turn] Horizontal vector detected | center_x: %d | dir: %s | Steer: %d deg\r\n",
-                    //        (int)turn.center_x, turn.turn_left ? "LEFT" : "RIGHT", (int)steer_angle);
-                    // PRINTF("Nu detectez track lines, am gasit o linie orizontala\r\n");
                 }
                 else {
                     /* No horizontal vector either -> gently decay angle toward straight */
@@ -259,13 +222,6 @@ int main(void)
                         last_steering_angle = 0.0;
                     }
                     Steer(last_steering_angle);
-
-                    // static uint32_t no_vector_counter = 0;
-                    // if (++no_vector_counter >= 100U) {
-                    //     no_vector_counter = 0U;
-                    //     PRINTF("Nu am gasit niciun vector, caut in continuare...\r\n");
-                    //     fflush(stdout);
-                    // }
 
                     PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
                 }

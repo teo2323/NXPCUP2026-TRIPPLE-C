@@ -13,10 +13,8 @@
 #define RX_BUF_SIZE 128
 
 // Definition of global PID parameters initialized with default values
-volatile double g_steering_p_right = DEFAULT_STEERING_P_RIGHT;
-volatile double g_steering_p_left  = DEFAULT_STEERING_P_LEFT;
-volatile double g_steering_d_right = DEFAULT_STEERING_D_RIGHT;
-volatile double g_steering_d_left  = DEFAULT_STEERING_D_LEFT;
+volatile double g_steering_p = DEFAULT_STEERING_P;
+volatile double g_steering_d = DEFAULT_STEERING_D;
 
 // Motor speed and engine state variables (blocked on boot for safety)
 volatile double g_motor_speed   = 70.0;
@@ -165,21 +163,13 @@ void Wifi_ParseCommand(const char *cmd)
     if (val_f < 0) val_f = -val_f;
 
 
-    if (strcmp(key, "STEERING_P_RIGHT") == 0) {
-        g_steering_p_right = (double)val;
-        Wifi_SendString("ACK: STEERING_P_RIGHT = ");
+    if (strcmp(key, "STEERING_P") == 0) {
+        g_steering_p = (double)val;
+        Wifi_SendString("ACK: STEERING_P = ");
     }
-    else if (strcmp(key, "STEERING_P_LEFT") == 0) {
-        g_steering_p_left = (double)val;
-        Wifi_SendString("ACK: STEERING_P_LEFT = ");
-    }
-    else if (strcmp(key, "STEERING_D_RIGHT") == 0) {
-        g_steering_d_right = (double)val;
-        Wifi_SendString("ACK: STEERING_D_RIGHT = ");
-    }
-    else if (strcmp(key, "STEERING_D_LEFT") == 0) {
-        g_steering_d_left = (double)val;
-        Wifi_SendString("ACK: STEERING_D_LEFT = ");
+    else if (strcmp(key, "STEERING_D") == 0) {
+        g_steering_d = (double)val;
+        Wifi_SendString("ACK: STEERING_D = ");
     }
     else if (strcmp(key, "MOTOR_SPEED") == 0) {
         g_motor_speed = (double)val;

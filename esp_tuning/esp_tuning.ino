@@ -14,10 +14,8 @@ WebServer server(80);
 Preferences preferences;
 
 // Local stored PID & Motor values (default values)
-float p_right       = 0.40f;
-float p_left        = 0.40f;
-float d_right       = 0.20f;
-float d_left        = 0.20f;
+float p_val         = 0.80f;
+float d_val         = 0.20f;
 float motor_speed   = 70.0f;
 float decay_factor  = 0.90f;
 bool engine_enabled = false;
@@ -295,60 +293,31 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           </div>
         </div>
 
-        <!-- PID Proportional Card -->
+        <!-- PID Control Card (Unified STEERING_P and STEERING_D) -->
         <div class="card">
-          <div class="card-title">Proportional (P Gains)</div>
+          <div class="card-title">Steering PID Gains</div>
           
           <div class="param-group">
             <div class="param-header">
-              <span class="param-name">STEERING_P_RIGHT</span>
-              <span class="param-val" id="val_P_RIGHT">0.400</span>
+              <span class="param-name">STEERING_P (Proportional)</span>
+              <span class="param-val" id="val_P">0.400</span>
             </div>
             <div class="controls">
-              <input type="range" id="slider_P_RIGHT" min="0" max="10" step="0.005" value="0.4" oninput="syncVal('P_RIGHT', this.value)">
-              <input type="number" id="num_P_RIGHT" min="0" max="10" step="0.005" value="0.4" oninput="syncSlider('P_RIGHT', this.value)">
-              <button class="btn" onclick="saveParam('STEERING_P_RIGHT', 'P_RIGHT')">Save</button>
+              <input type="range" id="slider_P" min="0" max="10" step="0.005" value="0.4" oninput="syncVal('P', this.value)">
+              <input type="number" id="num_P" min="0" max="10" step="0.005" value="0.4" oninput="syncSlider('P', this.value)">
+              <button class="btn" onclick="saveParam('STEERING_P', 'P')">Save</button>
             </div>
           </div>
 
           <div class="param-group">
             <div class="param-header">
-              <span class="param-name">STEERING_P_LEFT</span>
-              <span class="param-val" id="val_P_LEFT">0.400</span>
+              <span class="param-name">STEERING_D (Derivative)</span>
+              <span class="param-val" id="val_D">0.200</span>
             </div>
             <div class="controls">
-              <input type="range" id="slider_P_LEFT" min="0" max="10" step="0.005" value="0.4" oninput="syncVal('P_LEFT', this.value)">
-              <input type="number" id="num_P_LEFT" min="0" max="10" step="0.005" value="0.4" oninput="syncSlider('P_LEFT', this.value)">
-              <button class="btn" onclick="saveParam('STEERING_P_LEFT', 'P_LEFT')">Save</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- PID Derivative Card -->
-        <div class="card">
-          <div class="card-title">Derivativ (D Gains)</div>
-          
-          <div class="param-group">
-            <div class="param-header">
-              <span class="param-name">STEERING_D_RIGHT</span>
-              <span class="param-val" id="val_D_RIGHT">0.200</span>
-            </div>
-            <div class="controls">
-              <input type="range" id="slider_D_RIGHT" min="0" max="10" step="0.005" value="0.2" oninput="syncVal('D_RIGHT', this.value)">
-              <input type="number" id="num_D_RIGHT" min="0" max="10" step="0.005" value="0.2" oninput="syncSlider('D_RIGHT', this.value)">
-              <button class="btn" onclick="saveParam('STEERING_D_RIGHT', 'D_RIGHT')">Save</button>
-            </div>
-          </div>
-
-          <div class="param-group">
-            <div class="param-header">
-              <span class="param-name">STEERING_D_LEFT</span>
-              <span class="param-val" id="val_D_LEFT">0.200</span>
-            </div>
-            <div class="controls">
-              <input type="range" id="slider_D_LEFT" min="0" max="10" step="0.005" value="0.2" oninput="syncVal('D_LEFT', this.value)">
-              <input type="number" id="num_D_LEFT" min="0" max="10" step="0.005" value="0.2" oninput="syncSlider('D_LEFT', this.value)">
-              <button class="btn" onclick="saveParam('STEERING_D_LEFT', 'D_LEFT')">Save</button>
+              <input type="range" id="slider_D" min="0" max="10" step="0.005" value="0.2" oninput="syncVal('D', this.value)">
+              <input type="number" id="num_D" min="0" max="10" step="0.005" value="0.2" oninput="syncSlider('D', this.value)">
+              <button class="btn" onclick="saveParam('STEERING_D', 'D')">Save</button>
             </div>
           </div>
         </div>
@@ -459,11 +428,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         .catch(function(e) { showToast('EMERGENCY STOP TRIMIS!', true); });
     }
     const saveAllPID = () => {
-      saveParam('STEERING_P_RIGHT', 'P_RIGHT');
-      setTimeout(() => { saveParam('STEERING_P_LEFT', 'P_LEFT'); }, 250);
-      setTimeout(() => { saveParam('STEERING_D_RIGHT', 'D_RIGHT'); }, 500);
-      setTimeout(() => { saveParam('STEERING_D_LEFT', 'D_LEFT'); }, 750);
-      setTimeout(() => { saveParam('DECAY_FACTOR', 'DECAY'); }, 1000);
+      saveParam('STEERING_P', 'P');
+      setTimeout(() => { saveParam('STEERING_D', 'D'); }, 250);
+      setTimeout(() => { saveParam('DECAY_FACTOR', 'DECAY'); }, 500);
     }
 
     /* 2D Pixy Frame & Coordinates Canvas Visualizer */
@@ -686,10 +653,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       fetch('/api/params')
         .then(function(r) { return r.json(); })
         .then(function(d) {
-          if (d.STEERING_P_RIGHT !== undefined) { syncVal('P_RIGHT', d.STEERING_P_RIGHT); syncSlider('P_RIGHT', d.STEERING_P_RIGHT); }
-          if (d.STEERING_P_LEFT !== undefined) { syncVal('P_LEFT', d.STEERING_P_LEFT); syncSlider('P_LEFT', d.STEERING_P_LEFT); }
-          if (d.STEERING_D_RIGHT !== undefined) { syncVal('D_RIGHT', d.STEERING_D_RIGHT); syncSlider('D_RIGHT', d.STEERING_D_RIGHT); }
-          if (d.STEERING_D_LEFT !== undefined) { syncVal('D_LEFT', d.STEERING_D_LEFT); syncSlider('D_LEFT', d.STEERING_D_LEFT); }
+          if (d.STEERING_P !== undefined) { syncVal('P', d.STEERING_P); syncSlider('P', d.STEERING_P); }
+          if (d.STEERING_D !== undefined) { syncVal('D', d.STEERING_D); syncSlider('D', d.STEERING_D); }
           if (d.MOTOR_SPEED !== undefined) { syncSpeed(d.MOTOR_SPEED); syncSpeedSlider(d.MOTOR_SPEED); }
           if (d.DECAY_FACTOR !== undefined) { syncVal('DECAY', d.DECAY_FACTOR); syncSlider('DECAY', d.DECAY_FACTOR); }
           if (d.ENGINE_ENABLED !== undefined) { updateEngineBadge(d.ENGINE_ENABLED === 1); }
@@ -706,24 +671,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 /* Load persisted PID & Motor params from Preferences */
 void loadStoredParams() {
     preferences.begin("pid_tuning", false);
-    p_right       = preferences.getFloat("P_RIGHT", 0.40f);
-    p_left        = preferences.getFloat("P_LEFT",  0.40f);
-    d_right       = preferences.getFloat("D_RIGHT", 0.20f);
-    d_left        = preferences.getFloat("D_LEFT",  0.20f);
-    motor_speed   = preferences.getFloat("SPEED",   70.0f);
-    decay_factor  = preferences.getFloat("DECAY",   0.90f);
+    p_val         = preferences.getFloat("P_VAL", 0.80f);
+    d_val         = preferences.getFloat("D_VAL", 0.20f);
+    motor_speed   = preferences.getFloat("SPEED", 70.0f);
+    decay_factor  = preferences.getFloat("DECAY", 0.90f);
     engine_enabled = false; // Always start stopped for safety
 }
 
 /* Transmit current params to NXP over UART */
 void sendParamsToNXP() {
-    Serial2.printf("STEERING_P_RIGHT = %.4f\n", p_right);
+    Serial2.printf("STEERING_P = %.4f\n", p_val);
     delay(40);
-    Serial2.printf("STEERING_P_LEFT = %.4f\n", p_left);
-    delay(40);
-    Serial2.printf("STEERING_D_RIGHT = %.4f\n", d_right);
-    delay(40);
-    Serial2.printf("STEERING_D_LEFT = %.4f\n", d_left);
+    Serial2.printf("STEERING_D = %.4f\n", d_val);
     delay(40);
     Serial2.printf("MOTOR_SPEED = %.4f\n", motor_speed);
     delay(40);
@@ -742,10 +701,8 @@ void handleRoot() {
 void handleGetParams() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     String json = "{";
-    json += "\"STEERING_P_RIGHT\":" + String(p_right, 4) + ",";
-    json += "\"STEERING_P_LEFT\":" + String(p_left, 4) + ",";
-    json += "\"STEERING_D_RIGHT\":" + String(d_right, 4) + ",";
-    json += "\"STEERING_D_LEFT\":" + String(d_left, 4) + ",";
+    json += "\"STEERING_P\":" + String(p_val, 4) + ",";
+    json += "\"STEERING_D\":" + String(d_val, 4) + ",";
     json += "\"MOTOR_SPEED\":" + String(motor_speed, 1) + ",";
     json += "\"DECAY_FACTOR\":" + String(decay_factor, 4) + ",";
     json += "\"ENGINE_ENABLED\":" + String(engine_enabled ? 1 : 0);
@@ -826,18 +783,12 @@ void handleSetParam() {
     String param = server.arg("param");
     float val = server.arg("val").toFloat();
 
-    if (param == "STEERING_P_RIGHT") {
-        p_right = val;
-        preferences.putFloat("P_RIGHT", val);
-    } else if (param == "STEERING_P_LEFT") {
-        p_left = val;
-        preferences.putFloat("P_LEFT", val);
-    } else if (param == "STEERING_D_RIGHT") {
-        d_right = val;
-        preferences.putFloat("D_RIGHT", val);
-    } else if (param == "STEERING_D_LEFT") {
-        d_left = val;
-        preferences.putFloat("D_LEFT", val);
+    if (param == "STEERING_P") {
+        p_val = val;
+        preferences.putFloat("P_VAL", val);
+    } else if (param == "STEERING_D") {
+        d_val = val;
+        preferences.putFloat("D_VAL", val);
     } else if (param == "MOTOR_SPEED") {
         motor_speed = val;
         preferences.putFloat("SPEED", val);

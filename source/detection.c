@@ -246,8 +246,10 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
         result->avg_slope      = (left->inverse_slope + right->inverse_slope) / 2.0;
 
-        /* Combined steering: inverse slope heading + center offset correction */
-        result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
+        /* Degree-scaled steering: heading angle (deg) + center offset correction (deg) */
+        double heading_deg = atan(result->avg_slope) * 180.0 / M_PI;
+        double offset_deg  = result->center_offset * DUAL_LINE_OFFSET_DEG_PER_PX;
+        result->steering_angle = (-1.0 * heading_deg) + offset_deg;
     }
     else if (!has_left && has_right) {
         /* CASE 2: Left line MISSING -> virtual center = right_x - half_track_width */
@@ -256,7 +258,9 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = right->inverse_slope;
 
-        result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
+        double heading_deg = atan(result->avg_slope) * 180.0 / M_PI;
+        double offset_deg  = result->center_offset * DUAL_LINE_OFFSET_DEG_PER_PX;
+        result->steering_angle = (-1.0 * heading_deg) + offset_deg;
     }
     else if (has_left && !has_right) {
         /* CASE 3: Right line MISSING -> virtual center = left_x + half_track_width */
@@ -265,7 +269,9 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = left->inverse_slope;
 
-        result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
+        double heading_deg = atan(result->avg_slope) * 180.0 / M_PI;
+        double offset_deg  = result->center_offset * DUAL_LINE_OFFSET_DEG_PER_PX;
+        result->steering_angle = (-1.0 * heading_deg) + offset_deg;
     }
     else {
         /* CASE 4: Neither line detected */

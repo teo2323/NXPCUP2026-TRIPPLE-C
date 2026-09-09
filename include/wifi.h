@@ -5,13 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/**
- * @brief Variabile dinamice globale pentru parametri de direcție PID (actualizați din Web Server via ESP32)
- */
-extern volatile double g_steering_p_right;
-extern volatile double g_steering_p_left;
-extern volatile double g_steering_d_right;
-extern volatile double g_steering_d_left;
+extern volatile double g_steering_p;
+extern volatile double g_steering_d;
 
 /**
  * @brief Variabile de control viteză și stare motor (actualizate din Web Server)

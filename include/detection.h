@@ -17,6 +17,7 @@ extern "C" {
 /* Default Detection & Track Constants */
 #define DETECTION_MIN_DY_VERTICAL      8.0
 #define DUAL_LINE_HALF_TRACK_DEFAULT   25.0  /* Half track width in pixels (~50px full track) */
+#define DUAL_LINE_OFFSET_DEG_PER_PX    1.5   /* Steering degree correction per pixel off-center */
 #define DETECTION_MIN_DX_HORIZONTAL    15   /* Minimum |dx| in pixels for a vector to be considered horizontal */
 #define TURN_TRACK_CLOSED_ANGLE        1.6  /* Raw angle output for closed turn */
 
