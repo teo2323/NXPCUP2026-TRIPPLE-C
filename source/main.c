@@ -198,6 +198,9 @@ static void vVisionTask(void *pvParameters)
             }
         }
 
+        /* Always actuate steering servo on every RTOS 16ms cycle, regardless of camera I2C frame drops */
+        Steer(last_steering_angle);
+
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(16));
     }
 }
@@ -233,9 +236,9 @@ int main(void)
     Ultrasonic_Init();
 
     /* Create FreeRTOS Tasks */
-    xTaskCreate(vSafetyTask,    "Safety",    configMINIMAL_STACK_SIZE + 128, NULL, 4, NULL);
-    xTaskCreate(vVisionTask,    "Vision",    configMINIMAL_STACK_SIZE + 512, NULL, 3, NULL);
-    xTaskCreate(vTelemetryTask, "Telemetry", configMINIMAL_STACK_SIZE + 256, NULL, 1, NULL);
+    xTaskCreate(vSafetyTask,    "Safety",    configMINIMAL_STACK_SIZE + 256, NULL, 4, NULL);
+    xTaskCreate(vTelemetryTask, "Telemetry", configMINIMAL_STACK_SIZE + 384, NULL, 3, NULL);
+    xTaskCreate(vVisionTask,    "Vision",    configMINIMAL_STACK_SIZE + 896, NULL, 3, NULL);
 
     /* Start FreeRTOS Scheduler */
     vTaskStartScheduler();

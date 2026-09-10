@@ -6,17 +6,21 @@
 
 void Steer(double angle)
 {
-    // Apply zero-point offset (15.0 corresponds to physical straight)
+    // Apply zero-point offset (SERVO_OFFSET corresponds to physical straight calibration)
     double effective_angle = angle + SERVO_OFFSET;
 
     if (effective_angle > 100.0)  effective_angle = 100.0;
     if (effective_angle < -100.0) effective_angle = -100.0;
 
+    // Map angle range [-100, +100] to PWM duty cycle range [5.0%, 10.0%] (1.0ms to 2.0ms pulse)
     double duty = 5.0 + ((effective_angle + 100.0) / 200.0) * 5.0;
 
     uint32_t periodTicks = CTIMER2_PERIPHERAL->MR[CTIMER2_PWM_PERIOD_CH];
-    uint32_t pulseTicks = (uint32_t)((periodTicks * (100.0 - duty)) / 100.0);
-    //uint32_t pulseTicks = (uint32_t)((periodTicks * duty) / 100.0);
+    if (periodTicks == 0U) {
+        periodTicks = 19999U; // Fallback to default 20ms period (50Hz)
+    }
+
+    uint32_t pulseTicks = (uint32_t)(((double)periodTicks * (100.0 - duty)) / 100.0);
 
     CTIMER2_PERIPHERAL->MR[CTIMER2_PWM_3_CHANNEL] = pulseTicks;
 }

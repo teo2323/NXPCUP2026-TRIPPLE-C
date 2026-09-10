@@ -95,6 +95,7 @@ void Wifi_Init(void)
     s_wifi_rx_tail = 0;
 
     LPUART_EnableInterrupts(LP_FLEXCOMM3_PERIPHERAL, kLPUART_RxDataRegFullInterruptEnable | kLPUART_RxOverrunInterruptEnable);
+    NVIC_SetPriority(LP_FLEXCOMM3_IRQn, 4);
     EnableIRQ(LP_FLEXCOMM3_IRQn);
 }
 

@@ -25,6 +25,7 @@ void Ultrasonic_Init(void)
 
     /* Configure GPIO Echo pin interrupt on either edge */
     GPIO_SetPinInterruptConfig(BOARD_INITPINS_senzor2_echo_GPIO, BOARD_INITPINS_senzor2_echo_PIN, kGPIO_InterruptEitherEdge);
+    NVIC_SetPriority(GPIO40_IRQn, 5);
     EnableIRQ(GPIO40_IRQn);
 }
 

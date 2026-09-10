@@ -252,7 +252,7 @@ set(asm_include_directories "${ProjDirPath}/drivers"
         "${ProjDirPath}/rtos/freertos-kernel/portable/MemMang/heap_4.c"
         "${ProjDirPath}/rtos/freertos-kernel/portable/GCC/ARM_CM33_NTZ/non_secure/port.c"
         "${ProjDirPath}/rtos/freertos-kernel/portable/GCC/ARM_CM33_NTZ/non_secure/portasm.c"
-    )
+)
 
 set(c_include_directories "${ProjDirPath}/drivers"
 "${ProjDirPath}/CMSIS"

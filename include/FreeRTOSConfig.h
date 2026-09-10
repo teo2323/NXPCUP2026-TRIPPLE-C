@@ -74,6 +74,7 @@ uint32_t MSDK_GetCpuCycleCount(void);
 #define configENABLE_FPU                        1
 #define configENABLE_MPU                        0
 #define configENABLE_TRUSTZONE                  0
+#define configRUN_FREERTOS_SECURE_ONLY          1
 
 /* Map FreeRTOS port interrupt handlers to ARM Cortex-M33 CMSIS vectors */
 #define vPortSVCHandler                         SVC_Handler

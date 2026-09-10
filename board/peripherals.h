@@ -90,7 +90,7 @@ extern "C" {
 /* Definition of channel 2 ID */
 #define CTIMER2_PWM_3_CHANNEL kCTIMER_Match_2
 /* Definition of channel 2 duty */
-#define CTIMER2_PWM_3_DUTY 19950
+#define CTIMER2_PWM_3_DUTY 18499
 /* BOARD_InitPeripherals defines for LP_FLEXCOMM2 */
 /* Definition of peripheral ID */
 #define LP_FLEXCOMM2_PERIPHERAL LPI2C2
