@@ -21,7 +21,8 @@
       "gdbServerConfigs": {
         "linkserver": {
           "device": "MCXN947",
-          "core": "cm33_core0"
+          "core": "cm33_core0",
+          "rtos": "FreeRTOS"
         },
         "segger": {},
         "pemicro": {}
