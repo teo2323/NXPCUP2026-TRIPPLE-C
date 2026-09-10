@@ -88,4 +88,18 @@ extern uint32_t SystemCoreClock;
 #define INCLUDE_eTaskGetState                   1
 #define INCLUDE_xTimerPendFunctionCall          1
 
+#define configRECORD_STACK_HIGH_ADDRESS         1
+
+/* MCUXpresso IDE / GDB RTOS Debugger Task Awareness Symbol */
+#if defined(__GNUC__)
+const uint8_t FreeRTOSDebugConfig[] __attribute__((weak, used)) = {
+    1,                                           /* Debug config version */
+    configMAX_PRIORITIES,                        /* Max priorities */
+    (configUSE_TRACE_FACILITY == 1) ? 1 : 0,     /* Trace facility */
+    sizeof(uint32_t),                            /* Size of tick type */
+    0,                                           /* Reserved */
+    0                                            /* Reserved */
+};
+#endif
+
 #endif /* FREERTOS_CONFIG_H */
