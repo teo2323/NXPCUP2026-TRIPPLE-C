@@ -13,135 +13,102 @@
 #include "esc.h"
 #include "detection.h"
 #include <math.h>
-#include "wifi.h" // Include noul header pentru funcțiile Wi-Fi
-#include "ultrasonic.h" // Include senzorul ultrasonic
+#include "wifi.h"
+#include "ultrasonic.h"
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+#include "semphr.h"
 
 #define MAX_VECTORS          10
 #define AUTOMATED_BASE_SPEED 40
-
 #define OBSTACLE_STOP_DIST_CM 20.0f
 #define OBSTACLE_CONFIRM_COUNT 2 
 
-int main(void)
+static pixy_t cam1;
+static volatile bool g_obstacle_brake = false;
+
+static void vSafetyTask(void *pvParameters)
 {
-    uint16_t vectors[MAX_VECTORS * 4];
-    size_t   num_vectors;
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    uint8_t obstacle_detected_count = 0;
 
-    BOARD_InitHardware();
-    BOARD_InitBootClocks();
-    BOARD_InitBootPins();
-    BOARD_InitBootPeripherals();
-
-    HbridgeInit(&g_hbridge,
-                CTIMER0_PERIPHERAL,
-                CTIMER0_PWM_PERIOD_CH,
-                CTIMER0_PWM_1_CHANNEL, // ENA (P0_25)
-                CTIMER0_PWM_2_CHANNEL, // ENB (P0_24)
-                GPIO0, 27U,            // IN1 (P0_27)
-                GPIO0, 26U,            // IN2 (P0_26)
-                GPIO0, 28U,            // IN3 (P0_28)
-                GPIO0, 31U             // IN4 (P0_31)
-    );
-    extern uint32_t SystemCoreClock;
-
-    CTIMER_StartTimer(CTIMER0_PERIPHERAL);
-
-    pixy_t cam1;
-    pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
-    pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active automated mode
-
-    /* 1. Continuous H-bridge drive speed (Dynamic via Web Server) */
-    int current_speed = g_engine_enabled ? (int)g_motor_speed : 0;
-    HbridgeSpeed(&g_hbridge, current_speed, current_speed);
-    Steer(0.0);
-    //TestServo();
-
-    double last_steering_angle = 0.0;
-    double previous_error      = 0.0;  // D term: stores last frame's angle
-
-    Wifi_Init(); // Inițializează modulul Wi-Fi
-    Ultrasonic_Init(); // Inițializează senzorul ultrasonic
-
-    static uint32_t ultrasonic_print_counter = 0;
-    static uint8_t  obstacle_detected_count  = 0;
-
-    static bool last_printed_engine_state = false;
-
-    while (1)
+    for (;;)
     {
-        Wifi_Process_Rx(); // Procesează datele primite de la modulul Wi-Fi
-
-        // Measure distance in front of the vehicle using non-blocking ultrasonic sensor 
         float distance_cm = Ultrasonic_ReadDistanceCm();
 
         if (distance_cm >= 2.0f && distance_cm <= OBSTACLE_STOP_DIST_CM) {
             if (++obstacle_detected_count >= OBSTACLE_CONFIRM_COUNT) {
-                obstacle_detected_count = OBSTACLE_CONFIRM_COUNT; // Prevenim overflow
-                PRINTF("[OBSTACLE] Obstacle detected at %d cm! Braking...\r\n", (int)distance_cm);
+                obstacle_detected_count = OBSTACLE_CONFIRM_COUNT;
+                g_obstacle_brake = true;
                 HbridgeBrake(&g_hbridge);
-                pixy_set_led(&cam1, 255, 0, 0); // Pixy Red LED: STOPPED AT OBSTACLE
-                Wifi_Process_Rx(); // Make sure ESP commands are still processed while braking
-                continue; // Menținem frâna fără a bloca bucla
+                pixy_set_led(&cam1, 255, 0, 0); // Pixy Red LED
             }
         } else {
             if (obstacle_detected_count >= OBSTACLE_CONFIRM_COUNT) {
-                PRINTF("[OBSTACLE] Path clear (%d cm)! Resuming movement...\r\n", (int)distance_cm);
-                pixy_set_led(&cam1, 0, 255, 0); // Pixy Green LED: Resumed
+                pixy_set_led(&cam1, 0, 255, 0); // Pixy Green LED
             }
-            // Reset counter if the path is clear or out-of-range timeout
             obstacle_detected_count = 0;
+            g_obstacle_brake = false;
         }
 
-        // Periodic debug output over serial (throttled every 20 iterations) 
-        if (++ultrasonic_print_counter >= 20U) {
-            ultrasonic_print_counter = 0U;
-            
-            if (distance_cm >= 0.0f) {
-                PRINTF("[ULTRASONIC] Distance: %d cm\r\n", (int)distance_cm);
-            } else if (distance_cm == -1.0f) {
-                PRINTF("[ULTRASONIC Err -1] Echo stayed LOW (Trigger not sent or sensor not powered)\r\n");
-            } else if (distance_cm == -2.0f) {
-                PRINTF("[ULTRASONIC Err -2] Echo stayed HIGH too long (out of range timeout)\r\n");
-            } else if (distance_cm == -3.0f) {
-                PRINTF("[ULTRASONIC Err -3] Echo duration was 0 us ERROR\r\n");
-            } else if (distance_cm == -4.0f) {
-                PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
-            }
-        }
-        
-        /* Maintain continuous dynamic motor speed rate */
-        if (g_engine_enabled != last_printed_engine_state) {
-            last_printed_engine_state = g_engine_enabled;
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(20));
+    }
+}
+
+static void vTelemetryTask(void *pvParameters)
+{
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+
+    for (;;)
+    {
+        Wifi_Process_Rx();
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(10));
+    }
+}
+
+static void vVisionTask(void *pvParameters)
+{
+    uint16_t vectors[MAX_VECTORS * 4];
+    size_t num_vectors;
+    double last_steering_angle = 0.0;
+    double previous_error = 0.0;
+    bool was_tracking = false;
+
+    static uint32_t g_horizontal_vector_count = 0U;
+    static bool last_engine_state = false;
+    static bool g_horiz_delay_in_progress = false;
+    static uint32_t g_horiz_delay_start_cycles = 0U;
+    static bool g_horiz_speed_reduced = false;
+
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+
+    for (;;)
+    {
+        if (g_obstacle_brake) {
+            vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(20));
+            continue;
         }
 
-        static uint32_t g_horizontal_vector_count = 0U;
-        static bool last_engine_state = false;
-        static bool g_horiz_delay_in_progress = false;
-        static uint32_t g_horiz_delay_start_cycles = 0U;
-        static bool g_horiz_speed_reduced = false;
-
-        /* Reset counter, delay, and speed reduction state on motor start (rising edge of g_engine_enabled) */
         if (g_engine_enabled && !last_engine_state) {
             g_horizontal_vector_count = 0U;
             g_horiz_delay_in_progress = false;
             g_horiz_speed_reduced = false;
-            pixy_set_led(&cam1, 0, 255, 0); // Pixy Green LED: Active engine
+            pixy_set_led(&cam1, 0, 255, 0);
         }
         last_engine_state = g_engine_enabled;
 
-        /* Non-blocking state machine for 1-second delay then speed reduction to current_speed / 2 */
         if (g_horiz_delay_in_progress) {
             uint32_t now_cycles = MSDK_GetCpuCycleCount();
-            /* 1 second = SystemCoreClock CPU cycles */
             if ((now_cycles - g_horiz_delay_start_cycles) >= SystemCoreClock) {
-                PRINTF("[PIXY HORIZONTAL] Non-blocking 1s delay finished! Reducing speed to current_speed/2...\r\n");
                 g_horiz_delay_in_progress = false;
                 g_horiz_speed_reduced = true;
-                pixy_set_led(&cam1, 255, 255, 0); // Pixy Yellow LED: Speed reduced
+                pixy_set_led(&cam1, 255, 255, 0);
             }
         }
 
-        /* Determine motor speed: reduce to current_speed / 2 if 1-second delay after > 2 horizontal vectors has elapsed */
+        int current_speed = 0;
         if (g_horiz_speed_reduced) {
             current_speed = g_engine_enabled ? ((int)g_motor_speed / 2) : 0;
         } else {
@@ -150,135 +117,130 @@ int main(void)
         HbridgeSpeed(&g_hbridge, current_speed, current_speed);
 
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
-            Wifi_Process_Rx();
-
             uint32_t horiz_in_frame = (uint32_t)detection_count_horizontal_vectors(vectors, num_vectors);
             if (horiz_in_frame > 0) {
                 g_horizontal_vector_count += horiz_in_frame;
-                PRINTF("[PIXY HORIZONTAL] Detectat %u linie/linii orizontala/e in cadrul curent! Total acumulat: %u\r\n",
-                       (unsigned)horiz_in_frame, (unsigned)g_horizontal_vector_count);
-
-                /* If > 2 horizontal vectors detected and delay not yet started/reduced, start non-blocking 1-second delay */
                 if (g_engine_enabled && g_horizontal_vector_count > 2U && !g_horiz_delay_in_progress && !g_horiz_speed_reduced) {
-                    PRINTF("[PIXY HORIZONTAL] More than 2 horizontal vectors detected (%u)! Starting non-blocking 1s timer before speed reduction...\r\n",
-                           (unsigned)g_horizontal_vector_count);
                     g_horiz_delay_in_progress = true;
                     g_horiz_delay_start_cycles = MSDK_GetCpuCycleCount();
-                    pixy_set_led(&cam1, 0, 255, 255); // Pixy Cyan LED: Timer running
+                    pixy_set_led(&cam1, 0, 255, 255);
                 }
             }
 
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
 
-            static bool was_tracking = false;
-
             if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present)) {
                 double error = det.steering_angle;
-
-                /* Reset derivative on mode transition (no-tracking -> tracking) to prevent derivative spike */
                 if (!was_tracking) {
                     previous_error = error;
                     was_tracking = true;
                 }
-
                 double derivative = error - previous_error;
-                previous_error    = error;
+                previous_error = error;
 
-                /* Unified PID algorithm with single P and single D coefficients */
                 double steer_angle = (STEERING_P * error) + (STEERING_D * derivative);
-
                 if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
                 if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
 
                 Steer(steer_angle);
                 last_steering_angle = steer_angle;
-            }
-            else {
+            } else {
                 was_tracking = false;
-
-                /* 0 track lines detected -> search for horizontal turn-track vector */
                 turn_track_result_t turn;
                 if (detection_detect_turn_track(vectors, num_vectors, &turn)) {
-                    /* A horizontal vector found: steer proportionally toward the turn */
                     double error = turn.steering_angle;
-
                     double derivative = error - previous_error;
-                    previous_error    = error;
+                    previous_error = error;
 
-                    /* Unified PID algorithm for turn track */
                     double steer_angle = (STEERING_P * error) + (STEERING_D * derivative);
-
                     if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
                     if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
 
                     Steer(steer_angle);
                     last_steering_angle = steer_angle;
-                }
-                else {
-                    /* No horizontal vector either -> gently decay angle toward straight */
-                    last_steering_angle *= g_decay_factor; // Decay factor (dynamic)
+                } else {
+                    last_steering_angle *= g_decay_factor;
                     if (fabs(last_steering_angle) < 1.0) {
                         last_steering_angle = 0.0;
                     }
                     Steer(last_steering_angle);
-
-                    PRINTF("[Turn] No turn vector | Decaying angle: %d deg\r\n", (int)last_steering_angle);
                 }
             }
 
-            /* Send Telemetry to ESP32 over UART at 10 Hz rate (~every 6 camera frames at 60FPS) */
             static uint32_t telemetry_tick = 0U;
-            if (++telemetry_tick >= 6U)
-            {
+            if (++telemetry_tick >= 6U) {
                 telemetry_tick = 0U;
-
                 uint8_t line_cnt = 0U;
                 const char *which_str = "NONE";
 
-                if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present))
-                {
-                    if (det.both_lines_present) {
-                        line_cnt = 2U;
-                        which_str = "BOTH";
-                    } else if (det.left_line_present) {
-                        line_cnt = 1U;
-                        which_str = "LEFT";
-                    } else {
-                        line_cnt = 1U;
-                        which_str = "RIGHT";
-                    }
-                }
-                else
-                {
+                if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present)) {
+                    line_cnt = det.both_lines_present ? 2U : 1U;
+                    which_str = det.both_lines_present ? "BOTH" : (det.left_line_present ? "LEFT" : "RIGHT");
+                } else {
                     turn_track_result_t turn_t;
                     if (detection_detect_turn_track(vectors, num_vectors, &turn_t)) {
                         line_cnt = 0U;
                         which_str = turn_t.turn_left ? "TURN_LEFT" : "TURN_RIGHT";
-                    } else {
-                        line_cnt = 0U;
-                        which_str = "NONE";
                     }
                 }
 
-                int lx0 = 0, ly0 = 0, lx1 = 0, ly1 = 0;
-                int rx0 = 0, ry0 = 0, rx1 = 0, ry1 = 0;
-
-                if (det.left_line_present) {
-                    lx0 = (int)det.left_line.vector.x0;
-                    ly0 = (int)det.left_line.vector.y0;
-                    lx1 = (int)det.left_line.vector.x1;
-                    ly1 = (int)det.left_line.vector.y1;
-                }
-                if (det.right_line_present) {
-                    rx0 = (int)det.right_line.vector.x0;
-                    ry0 = (int)det.right_line.vector.y0;
-                    rx1 = (int)det.right_line.vector.x1;
-                    ry1 = (int)det.right_line.vector.y1;
-                }
+                int lx0 = det.left_line_present ? (int)det.left_line.vector.x0 : 0;
+                int ly0 = det.left_line_present ? (int)det.left_line.vector.y0 : 0;
+                int lx1 = det.left_line_present ? (int)det.left_line.vector.x1 : 0;
+                int ly1 = det.left_line_present ? (int)det.left_line.vector.y1 : 0;
+                int rx0 = det.right_line_present ? (int)det.right_line.vector.x0 : 0;
+                int ry0 = det.right_line_present ? (int)det.right_line.vector.y0 : 0;
+                int rx1 = det.right_line_present ? (int)det.right_line.vector.x1 : 0;
+                int ry1 = det.right_line_present ? (int)det.right_line.vector.y1 : 0;
 
                 Wifi_SendTelemetry(line_cnt, which_str, num_vectors, g_horizontal_vector_count, last_steering_angle, lx0, ly0, lx1, ly1, rx0, ry0, rx1, ry1);
             }
         }
+
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(16));
+    }
+}
+
+int main(void)
+{
+    BOARD_InitHardware();
+    BOARD_InitBootClocks();
+    BOARD_InitBootPins();
+    BOARD_InitBootPeripherals();
+
+    HbridgeInit(&g_hbridge,
+                CTIMER0_PERIPHERAL,
+                CTIMER0_PWM_PERIOD_CH,
+                CTIMER0_PWM_1_CHANNEL,
+                CTIMER0_PWM_2_CHANNEL,
+                GPIO0, 27U,
+                GPIO0, 26U,
+                GPIO0, 28U,
+                GPIO0, 31U
+    );
+    extern uint32_t SystemCoreClock;
+
+    CTIMER_StartTimer(CTIMER0_PERIPHERAL);
+
+    pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
+    pixy_set_led(&cam1, 0, 255, 0);
+
+    HbridgeSpeed(&g_hbridge, 0, 0);
+    Steer(0.0);
+
+    Wifi_Init();
+    Ultrasonic_Init();
+
+    /* Create FreeRTOS Tasks */
+    xTaskCreate(vSafetyTask,    "Safety",    configMINIMAL_STACK_SIZE + 128, NULL, 4, NULL);
+    xTaskCreate(vVisionTask,    "Vision",    configMINIMAL_STACK_SIZE + 512, NULL, 3, NULL);
+    xTaskCreate(vTelemetryTask, "Telemetry", configMINIMAL_STACK_SIZE + 256, NULL, 1, NULL);
+
+    /* Start FreeRTOS Scheduler */
+    vTaskStartScheduler();
+
+    while (1)
+    {
     }
 }

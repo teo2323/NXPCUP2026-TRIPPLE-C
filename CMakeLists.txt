@@ -236,7 +236,23 @@ set(asm_include_directories "${ProjDirPath}/drivers"
 )
 
 
-target_include_directories(${MCUX_SDK_PROJECT_NAME} PRIVATE $<$<COMPILE_LANGUAGE:ASM>:${asm_include_directories}>)
+    # FreeRTOS Include Directories
+    target_include_directories(${MCUX_SDK_PROJECT_NAME} PRIVATE
+        "${ProjDirPath}/rtos/freertos-kernel/include"
+        "${ProjDirPath}/rtos/freertos-kernel/portable/GCC/ARM_CM33_NTZ/non_secure"
+    )
+
+    # FreeRTOS Source Files
+    target_sources(${MCUX_SDK_PROJECT_NAME} PRIVATE
+        "${ProjDirPath}/rtos/freertos-kernel/tasks.c"
+        "${ProjDirPath}/rtos/freertos-kernel/queue.c"
+        "${ProjDirPath}/rtos/freertos-kernel/list.c"
+        "${ProjDirPath}/rtos/freertos-kernel/timers.c"
+        "${ProjDirPath}/rtos/freertos-kernel/event_groups.c"
+        "${ProjDirPath}/rtos/freertos-kernel/portable/MemMang/heap_4.c"
+        "${ProjDirPath}/rtos/freertos-kernel/portable/GCC/ARM_CM33_NTZ/non_secure/port.c"
+        "${ProjDirPath}/rtos/freertos-kernel/portable/GCC/ARM_CM33_NTZ/non_secure/portasm.c"
+    )
 
 set(c_include_directories "${ProjDirPath}/drivers"
 "${ProjDirPath}/CMSIS"
