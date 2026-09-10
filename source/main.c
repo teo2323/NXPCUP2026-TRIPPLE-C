@@ -14,13 +14,13 @@
 #include "detection.h"
 #include <math.h>
 #include "wifi.h" // Include noul header pentru funcțiile Wi-Fi
-#include "ultrasonic.h" // Include senzorul ultrasonic
+// #include "ultrasonic.h" // Include senzorul ultrasonic
 
 #define MAX_VECTORS          10
 #define AUTOMATED_BASE_SPEED 40
 
-#define OBSTACLE_STOP_DIST_CM 20.0f
-#define OBSTACLE_CONFIRM_COUNT 2 
+// #define OBSTACLE_STOP_DIST_CM 20.0f
+// #define OBSTACLE_CONFIRM_COUNT 2 
 
 int main(void)
 {
@@ -60,10 +60,10 @@ int main(void)
     double previous_error      = 0.0;  // D term: stores last frame's angle
 
     Wifi_Init(); // Inițializează modulul Wi-Fi
-    Ultrasonic_Init(); // Inițializează senzorul ultrasonic
+    // Ultrasonic_Init(); // Inițializează senzorul ultrasonic
 
-    static uint32_t ultrasonic_print_counter = 0;
-    static uint8_t  obstacle_detected_count  = 0;
+    // static uint32_t ultrasonic_print_counter = 0;
+    // static uint8_t  obstacle_detected_count  = 0;
 
     static bool last_printed_engine_state = false;
 
@@ -71,6 +71,7 @@ int main(void)
     {
         Wifi_Process_Rx(); // Procesează datele primite de la modulul Wi-Fi
 
+        /*
         // Measure distance in front of the vehicle using non-blocking ultrasonic sensor 
         float distance_cm = Ultrasonic_ReadDistanceCm();
 
@@ -108,19 +109,21 @@ int main(void)
                 PRINTF("[ULTRASONIC Err -4] Echo was already HIGH before Trigger pulse\r\n");
             }
         }
+        */
         
         /* Maintain continuous dynamic motor speed rate */
         if (AUTO_ENGINE_ENABLED != last_printed_engine_state) {
             last_printed_engine_state = AUTO_ENGINE_ENABLED;
         }
 
+        /*
         static uint32_t g_horizontal_vector_count = 0U;
         static bool last_engine_state = false;
         static bool g_horiz_delay_in_progress = false;
         static uint32_t g_horiz_delay_start_cycles = 0U;
         static bool g_horiz_speed_reduced = false;
 
-        /* Reset counter, delay, and speed reduction state on motor start (rising edge of AUTO_ENGINE_ENABLED) */
+        // Reset counter, delay, and speed reduction state on motor start (rising edge of AUTO_ENGINE_ENABLED)
         if (AUTO_ENGINE_ENABLED && !last_engine_state) {
             g_horizontal_vector_count = 0U;
             g_horiz_delay_in_progress = false;
@@ -129,10 +132,10 @@ int main(void)
         }
         last_engine_state = AUTO_ENGINE_ENABLED;
 
-        /* Non-blocking state machine for 1-second delay then speed reduction to current_speed / 2 */
+        // Non-blocking state machine for 1-second delay then speed reduction to current_speed / 2
         if (g_horiz_delay_in_progress) {
             uint32_t now_cycles = MSDK_GetCpuCycleCount();
-            /* 1 second = SystemCoreClock CPU cycles */
+            // 1 second = SystemCoreClock CPU cycles
             if ((now_cycles - g_horiz_delay_start_cycles) >= SystemCoreClock) {
                 PRINTF("[PIXY HORIZONTAL] Non-blocking 1s delay finished! Reducing speed to current_speed/2...\r\n");
                 g_horiz_delay_in_progress = false;
@@ -141,24 +144,28 @@ int main(void)
             }
         }
 
-        /* Determine motor speed: reduce to current_speed / 2 if 1-second delay after > 2 horizontal vectors has elapsed */
+        // Determine motor speed: reduce to current_speed / 2 if 1-second delay after > 2 horizontal vectors has elapsed
         if (g_horiz_speed_reduced) {
             current_speed = AUTO_ENGINE_ENABLED ? ((int)AUTO_MOTOR_SPEED / 2) : 0;
         } else {
             current_speed = AUTO_ENGINE_ENABLED ? (int)AUTO_MOTOR_SPEED : 0;
         }
+        */
+
+        current_speed = AUTO_ENGINE_ENABLED ? (int)AUTO_MOTOR_SPEED : 0;
         HbridgeSpeed(&g_hbridge, current_speed, current_speed);
 
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
             Wifi_Process_Rx();
 
+            /*
             uint32_t horiz_in_frame = (uint32_t)detection_count_horizontal_vectors(vectors, num_vectors);
             if (horiz_in_frame > 0) {
                 g_horizontal_vector_count += horiz_in_frame;
                 PRINTF("[PIXY HORIZONTAL] Detectat %u linie/linii orizontala/e in cadrul curent! Total acumulat: %u\r\n",
                        (unsigned)horiz_in_frame, (unsigned)g_horizontal_vector_count);
 
-                /* If > 2 horizontal vectors detected and delay not yet started/reduced, start non-blocking 1-second delay */
+                // If > 2 horizontal vectors detected and delay not yet started/reduced, start non-blocking 1-second delay
                 if (AUTO_ENGINE_ENABLED && g_horizontal_vector_count > 2U && !g_horiz_delay_in_progress && !g_horiz_speed_reduced) {
                     PRINTF("[PIXY HORIZONTAL] More than 2 horizontal vectors detected (%u)! Starting non-blocking 1s timer before speed reduction...\r\n",
                            (unsigned)g_horizontal_vector_count);
@@ -167,6 +174,7 @@ int main(void)
                     pixy_set_led(&cam1, 0, 255, 255); // Pixy Cyan LED: Timer running
                 }
             }
+            */
 
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
@@ -277,7 +285,7 @@ int main(void)
                     ry1 = (int)det.right_line.vector.y1;
                 }
 
-                Wifi_SendTelemetry(line_cnt, which_str, num_vectors, g_horizontal_vector_count, last_steering_angle, lx0, ly0, lx1, ly1, rx0, ry0, rx1, ry1);
+                Wifi_SendTelemetry(line_cnt, which_str, num_vectors, 0U, last_steering_angle, lx0, ly0, lx1, ly1, rx0, ry0, rx1, ry1);
             }
         }
     }
