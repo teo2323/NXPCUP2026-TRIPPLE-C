@@ -12,13 +12,13 @@
 
 #define RX_BUF_SIZE 128
 
-// Definition of global PID parameters initialized with default values
-volatile double g_steering_p = DEFAULT_STEERING_P;
-volatile double g_steering_d = DEFAULT_STEERING_D;
+// Definition of global PID parameters initialized with hardcoded defaults
+volatile double g_steering_p = STEERING_P;
+volatile double g_steering_d = STEERING_D;
 
-// Motor speed and engine state variables (blocked on boot for safety)
-volatile double g_motor_speed   = 70.0;
-volatile bool   g_engine_enabled = false;
+// Motor speed and engine state variables (hardcoded active for autov2)
+volatile double g_motor_speed   = AUTO_MOTOR_SPEED;
+volatile bool   g_engine_enabled = AUTO_ENGINE_ENABLED;
 volatile double g_decay_factor  = DECAY_FACTOR;
 
 #define TX_BUF_SIZE 512

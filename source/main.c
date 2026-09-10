@@ -50,8 +50,8 @@ int main(void)
     pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
     pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active automated mode
 
-    /* 1. Continuous H-bridge drive speed (Dynamic via Web Server) */
-    int current_speed = g_engine_enabled ? (int)g_motor_speed : 0;
+    /* 1. Continuous H-bridge drive speed (Hardcoded Autonomous Mode for autov2) */
+    int current_speed = AUTO_ENGINE_ENABLED ? (int)AUTO_MOTOR_SPEED : 0;
     HbridgeSpeed(&g_hbridge, current_speed, current_speed);
     Steer(0.0);
     //TestServo();
@@ -110,8 +110,8 @@ int main(void)
         }
         
         /* Maintain continuous dynamic motor speed rate */
-        if (g_engine_enabled != last_printed_engine_state) {
-            last_printed_engine_state = g_engine_enabled;
+        if (AUTO_ENGINE_ENABLED != last_printed_engine_state) {
+            last_printed_engine_state = AUTO_ENGINE_ENABLED;
         }
 
         static uint32_t g_horizontal_vector_count = 0U;
@@ -120,14 +120,14 @@ int main(void)
         static uint32_t g_horiz_delay_start_cycles = 0U;
         static bool g_horiz_speed_reduced = false;
 
-        /* Reset counter, delay, and speed reduction state on motor start (rising edge of g_engine_enabled) */
-        if (g_engine_enabled && !last_engine_state) {
+        /* Reset counter, delay, and speed reduction state on motor start (rising edge of AUTO_ENGINE_ENABLED) */
+        if (AUTO_ENGINE_ENABLED && !last_engine_state) {
             g_horizontal_vector_count = 0U;
             g_horiz_delay_in_progress = false;
             g_horiz_speed_reduced = false;
             pixy_set_led(&cam1, 0, 255, 0); // Pixy Green LED: Active engine
         }
-        last_engine_state = g_engine_enabled;
+        last_engine_state = AUTO_ENGINE_ENABLED;
 
         /* Non-blocking state machine for 1-second delay then speed reduction to current_speed / 2 */
         if (g_horiz_delay_in_progress) {
@@ -143,9 +143,9 @@ int main(void)
 
         /* Determine motor speed: reduce to current_speed / 2 if 1-second delay after > 2 horizontal vectors has elapsed */
         if (g_horiz_speed_reduced) {
-            current_speed = g_engine_enabled ? ((int)g_motor_speed / 2) : 0;
+            current_speed = AUTO_ENGINE_ENABLED ? ((int)AUTO_MOTOR_SPEED / 2) : 0;
         } else {
-            current_speed = g_engine_enabled ? (int)g_motor_speed : 0;
+            current_speed = AUTO_ENGINE_ENABLED ? (int)AUTO_MOTOR_SPEED : 0;
         }
         HbridgeSpeed(&g_hbridge, current_speed, current_speed);
 
@@ -159,7 +159,7 @@ int main(void)
                        (unsigned)horiz_in_frame, (unsigned)g_horizontal_vector_count);
 
                 /* If > 2 horizontal vectors detected and delay not yet started/reduced, start non-blocking 1-second delay */
-                if (g_engine_enabled && g_horizontal_vector_count > 2U && !g_horiz_delay_in_progress && !g_horiz_speed_reduced) {
+                if (AUTO_ENGINE_ENABLED && g_horizontal_vector_count > 2U && !g_horiz_delay_in_progress && !g_horiz_speed_reduced) {
                     PRINTF("[PIXY HORIZONTAL] More than 2 horizontal vectors detected (%u)! Starting non-blocking 1s timer before speed reduction...\r\n",
                            (unsigned)g_horizontal_vector_count);
                     g_horiz_delay_in_progress = true;
