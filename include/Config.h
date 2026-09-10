@@ -5,11 +5,11 @@
 
 // Hardcoded Autonomous Vehicle Parameters (autov2)
 #define AUTO_ENGINE_ENABLED    true
-#define AUTO_MOTOR_SPEED       60.0
+#define AUTO_MOTOR_SPEED       100
 
 // Hardcoded Steering control coefficients
-#define STEERING_P             0.80
-#define STEERING_D             0.20
+#define STEERING_P             1.5
+#define STEERING_D             4
 
 // Physical steering limits
 #define STEERING_LIMIT_RIGHT   45.0
