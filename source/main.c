@@ -50,10 +50,9 @@ int main(void)
     pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
     pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active automated mode
 
-    /* 1. Continuous H-bridge drive speed (Dynamic via Web Server) */
-    int current_speed = g_engine_enabled ? (int)g_motor_speed : 0;
-    HbridgeSpeed(&g_hbridge, current_speed, current_speed);
-    Steer(0.0);
+    /* 1. Continuous H-bridge drive speed */
+    HbridgeSpeed(&g_hbridge, 0, 0);
+    Steer(0);
     //TestServo();
 
     double last_steering_angle = 0.0;

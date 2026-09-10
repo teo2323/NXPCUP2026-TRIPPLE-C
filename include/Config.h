@@ -14,8 +14,8 @@
 #define STEERING_D      g_steering_d
 
 // Physical steering limits
-#define STEERING_LIMIT_RIGHT  45
-#define STEERING_LIMIT_LEFT  -45
+#define STEERING_LIMIT_RIGHT  50
+#define STEERING_LIMIT_LEFT  -50
 
 // Wheel speeds
 #define SPEED_RIGHT           40
