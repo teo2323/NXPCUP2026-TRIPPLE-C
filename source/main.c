@@ -244,3 +244,17 @@ int main(void)
     {
     }
 }
+
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+    (void)xTask;
+    /* Emergency brake on stack overflow */
+    HbridgeBrake(&g_hbridge);
+    pixy_set_led(&cam1, 255, 0, 0); // Pixy Solid Red LED
+    PRINTF("\r\n[CRITICAL ERROR] FreeRTOS Stack Overflow in Task: %s!\r\n", pcTaskName ? pcTaskName : "UNKNOWN");
+
+    for (;;)
+    {
+        /* Trap CPU safely */
+    }
+}

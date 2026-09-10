@@ -15,7 +15,7 @@
         "POSTPROCESS_UTILITY": "$env{POSTPROCESS_UTILITY}",
         "LIBRARY_TYPE": "REDLIB",
         "LANGUAGE": "C",
-        "DEBUG_CONSOLE": "SEMIHOST",
+        "DEBUG_CONSOLE": "UART",
         "CMAKE_BUILD_TYPE": "Debug",
         "SdkRootDirPath": "$env{SdkRootDirPath}",
         "CMAKE_RUNTIME_OUTPUT_DIRECTORY": "$env{binaryDir}",

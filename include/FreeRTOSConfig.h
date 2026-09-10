@@ -37,14 +37,21 @@ extern uint32_t SystemCoreClock;
 /* Hook function definitions */
 #define configUSE_IDLE_HOOK                     0
 #define configUSE_TICK_HOOK                     0
-#define configCHECK_FOR_STACK_OVERFLOW          0
+#define configCHECK_FOR_STACK_OVERFLOW          2
 #define configUSE_MALLOC_FAILED_HOOK            0
 #define configUSE_DAEMON_TASK_STARTUP_HOOK      0
 
+/* System declarations for run-time statistics timer */
+void MSDK_EnableCpuCycleCounter(void);
+uint32_t MSDK_GetCpuCycleCount(void);
+
 /* Run time and task stats gathering definitions */
-#define configGENERATE_RUN_TIME_STATS           0
+#define configGENERATE_RUN_TIME_STATS           1
 #define configUSE_TRACE_FACILITY                1
 #define configUSE_STATS_FORMATTING_FUNCTIONS    1
+
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() MSDK_EnableCpuCycleCounter()
+#define portGET_RUN_TIME_COUNTER_VALUE()         MSDK_GetCpuCycleCount()
 
 /* Co-routine definitions */
 #define configUSE_CO_ROUTINES                   0
