@@ -17,7 +17,6 @@
 #include "fsl_gpio.h"
 #include "fsl_lpi2c.h"
 #include "fsl_lpi2c_edma.h"
-#include "fsl_lpuart.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -50,21 +49,21 @@ extern "C" {
 /* Definition of peripheral ID */
 #define CTIMER0_PERIPHERAL CTIMER0
 /* Timer tick frequency in Hz (input frequency of the timer) */
-#define CTIMER0_TICK_FREQ 10000000UL
+#define CTIMER0_TICK_FREQ 2343750UL
 /* Timer tick period in ns (input period of the timer) */
-#define CTIMER0_TICK_PERIOD 100UL
+#define CTIMER0_TICK_PERIOD 427UL
 /* Definition of PWM period channel. */
-#define CTIMER0_PWM_PERIOD_CH kCTIMER_Match_3
+#define CTIMER0_PWM_PERIOD_CH kCTIMER_Match_0
 /* Definition of PWM period */
-#define CTIMER0_PWM_PERIOD 999
+#define CTIMER0_PWM_PERIOD 2342
 /* Definition of channel 1 ID */
 #define CTIMER0_PWM_1_CHANNEL kCTIMER_Match_1
 /* Definition of channel 1 duty */
-#define CTIMER0_PWM_1_DUTY 1000
-/* Definition of channel 0 ID */
-#define CTIMER0_PWM_2_CHANNEL kCTIMER_Match_0
-/* Definition of channel 0 duty */
-#define CTIMER0_PWM_2_DUTY 950
+#define CTIMER0_PWM_1_DUTY 2293
+/* Definition of channel 2 ID */
+#define CTIMER0_PWM_2_CHANNEL kCTIMER_Match_2
+/* Definition of channel 2 duty */
+#define CTIMER0_PWM_2_DUTY 2293
 /* Alias for GPIO0 peripheral */
 #define GPIO0_GPIO GPIO0
 /* Alias for PORT0 */
@@ -77,20 +76,6 @@ extern "C" {
 #define GPIO0_INT_1_IRQN GPIO01_IRQn
 /* GPIO0 interrupt handler identifier. */
 #define GPIO0_INT_1_IRQHANDLER GPIO01_IRQHandler
-/* Definition of peripheral ID */
-#define CTIMER2_PERIPHERAL CTIMER2
-/* Timer tick frequency in Hz (input frequency of the timer) */
-#define CTIMER2_TICK_FREQ 1000000UL
-/* Timer tick period in ns (input period of the timer) */
-#define CTIMER2_TICK_PERIOD 1000UL
-/* Definition of PWM period channel. */
-#define CTIMER2_PWM_PERIOD_CH kCTIMER_Match_0
-/* Definition of PWM period */
-#define CTIMER2_PWM_PERIOD 19999
-/* Definition of channel 2 ID */
-#define CTIMER2_PWM_3_CHANNEL kCTIMER_Match_2
-/* Definition of channel 2 duty */
-#define CTIMER2_PWM_3_DUTY 19950
 /* BOARD_InitPeripherals defines for LP_FLEXCOMM2 */
 /* Definition of peripheral ID */
 #define LP_FLEXCOMM2_PERIPHERAL LPI2C2
@@ -122,38 +107,26 @@ extern "C" {
 #define CTIMER4_PWM_PERIOD_CH kCTIMER_Match_0
 /* Definition of PWM period */
 #define CTIMER4_PWM_PERIOD 1170
-/* BOARD_InitPeripherals defines for LP_FLEXCOMM0 */
 /* Definition of peripheral ID */
-#define LP_FLEXCOMM0_PERIPHERAL LPI2C0
-/* Definition of peripheral base address */
-#define LP_FLEXCOMM0_PERIPHERAL_BASE LPI2C0_BASE
-/* Definition of the clock source frequency */
-#define LP_FLEXCOMM0_CLOCK_SOURCE 12000000UL
-/* Definition of peripheral ID */
-#define CTIMER3_PERIPHERAL CTIMER3
+#define CTIMER2_PERIPHERAL CTIMER2
 /* Timer tick frequency in Hz (input frequency of the timer) */
-#define CTIMER3_TICK_FREQ 1000000UL
+#define CTIMER2_TICK_FREQ 150000000UL
 /* Timer tick period in ns (input period of the timer) */
-#define CTIMER3_TICK_PERIOD 1000UL
+#define CTIMER2_TICK_PERIOD 7UL
 /* Definition of PWM period channel. */
-#define CTIMER3_PWM_PERIOD_CH kCTIMER_Match_3
+#define CTIMER2_PWM_PERIOD_CH kCTIMER_Match_0
 /* Definition of PWM period */
-#define CTIMER3_PWM_PERIOD 19999
-/* Definition of channel 0 ID */
-#define CTIMER3_PWM_1_CHANNEL kCTIMER_Match_0
-/* Definition of channel 0 duty */
-#define CTIMER3_PWM_1_DUTY 20000
-/* Definition of peripheral ID */
-#define LP_FLEXCOMM3_PERIPHERAL ((LPUART_Type *) LP_FLEXCOMM3)
-/* Definition of the clock source frequency */
-#define LP_FLEXCOMM3_CLOCK_SOURCE 12000000UL
+#define CTIMER2_PWM_PERIOD 2999999
+/* Definition of channel 2 ID */
+#define CTIMER2_PWM_2_CHANNEL kCTIMER_Match_2
+/* Definition of channel 2 duty */
+#define CTIMER2_PWM_2_DUTY 2775000
 
 /***********************************************************************************************************************
  * Global variables
  **********************************************************************************************************************/
 extern edma_config_t DMA0_config;
 extern const ctimer_config_t CTIMER0_config;
-extern const ctimer_config_t CTIMER2_config;
 extern const lpi2c_master_config_t LP_FLEXCOMM2_masterConfig;
 extern edma_handle_t LP_FLEXCOMM2_RX_Handle;
 extern edma_handle_t LP_FLEXCOMM2_TX_Handle;
@@ -161,9 +134,7 @@ extern lpi2c_master_edma_handle_t LP_FLEXCOMM2_master_handle;
 extern uint8_t LP_FLEXCOMM2_master_buffer[LP_FLEXCOMM2_MASTER_BUFFER_SIZE];
 extern lpi2c_master_transfer_t LP_FLEXCOMM2_masterTransfer;
 extern const ctimer_config_t CTIMER4_config;
-extern const lpi2c_master_config_t LP_FLEXCOMM0_masterConfig;
-extern const ctimer_config_t CTIMER3_config;
-extern const lpuart_config_t LP_FLEXCOMM3_config;
+extern const ctimer_config_t CTIMER2_config;
 
 /***********************************************************************************************************************
  * Initialization functions

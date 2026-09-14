@@ -2,51 +2,40 @@
 #include "peripherals.h"
 #include "fsl_debug_console.h"
 
-#define SERVO_OFFSET -3
-
 void Steer(double angle)
 {
-    // Apply zero-point offset (15.0 corresponds to physical straight)
-    double effective_angle = angle + SERVO_OFFSET;
+    // 1. TODO: clamp `angle` to the range [-100.0, 100.0]
 
-    if (effective_angle > 100.0)  effective_angle = 100.0;
-    if (effective_angle < -100.0) effective_angle = -100.0;
+	if(angle > 100) angle = 100;
+	if(angle < -100) angle = -100;
 
-    double duty = 5.0 + ((effective_angle + 100.0) / 200.0) * 5.0;
 
+
+    // 2. TODO: map the angle to a duty cycle between 5.0% and 10.0%
+    double duty = 5+ ((angle+100)*5)/200;
+
+    // 3. TODO: read the PWM period from the period channel match register
     uint32_t periodTicks = CTIMER2_PERIPHERAL->MR[CTIMER2_PWM_PERIOD_CH];
-    uint32_t pulseTicks = (uint32_t)((periodTicks * (100.0 - duty)) / 100.0);
-    //uint32_t pulseTicks = (uint32_t)((periodTicks * duty) / 100.0);
 
-    CTIMER2_PERIPHERAL->MR[CTIMER2_PWM_3_CHANNEL] = pulseTicks;
+    // 4. TODO: convert the duty cycle into pulse ticks; the match value is
+    //          where the pulse starts, so use (100.0 - duty)
+    uint32_t pulseTicks =periodTicks * ((100-duty)/100) ;
+
+    // 5. TODO: write the result to the servo channel match register
+    CTIMER2_PERIPHERAL->MR[2] = pulseTicks;
 }
 
 void TestServo(){
 	volatile int Delay;
 	volatile int SteerStrength;
 	while(1){
-		for(SteerStrength = -45; SteerStrength <=45; SteerStrength++){
+		for(SteerStrength = -100; SteerStrength <=100; SteerStrength++){
 			Delay = 200000;
 			while(Delay){
 				Delay--;
 			}
-			// PRINTF("Steer: %d\n", SteerStrength);
+			PRINTF("Steer: %d\n", SteerStrength);
 			Steer(SteerStrength);
 		}
 	}
-}
-
-void TestServoRightLeft()
-{
-    extern uint32_t SystemCoreClock;
-    // PRINTF("Servo Test: 3 seconds to the right...\r\n");
-    Steer(30.0); /* Steer right */
-    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
-
-    // PRINTF("Servo Test: 7 seconds to the left...\r\n");
-    Steer(-30.0); /* Steer left */
-    SDK_DelayAtLeastUs(3000000U, SystemCoreClock);
-
-    // PRINTF("Servo Test: Centering...\r\n");
-    Steer(0.0); /* Center steering */
 }

@@ -1,11 +1,9 @@
 #include "pixy.h"
 #include "peripherals.h"
 #include "fsl_lpi2c_edma.h"
-#include "wifi.h"
 #include <stdbool.h>
 
-static volatile bool     transferDone;
-static volatile status_t transferStatus;
+static volatile bool transferDone;
 
 static void pixy_edma_cb(LPI2C_Type *base,
                          lpi2c_master_edma_handle_t *handle,
@@ -13,8 +11,9 @@ static void pixy_edma_cb(LPI2C_Type *base,
                          void *userData)
 {
     (void)base; (void)handle; (void)userData;
-    transferStatus = status;
-    transferDone   = true;
+    if (status == kStatus_Success) {
+        transferDone = true;
+    }
 }
 
 void pixy_init(pixy_t *cam,
@@ -36,8 +35,7 @@ void pixy_init(pixy_t *cam,
 
 static status_t pixy_send(pixy_t *cam, const uint8_t *cmd, size_t len)
 {
-    transferDone   = false;
-    transferStatus = kStatus_Success;
+    transferDone = false;
     lpi2c_master_transfer_t xfer = {
         .slaveAddress   = cam->address,
         .direction      = kLPI2C_Write,
@@ -48,25 +46,13 @@ static status_t pixy_send(pixy_t *cam, const uint8_t *cmd, size_t len)
     };
     status_t s = LPI2C_MasterTransferEDMA(cam->instance, &cam->edmaHandle, &xfer);
     if (s != kStatus_Success) return s;
-
-    uint32_t timeout = 500000U;
-    while (!transferDone && --timeout > 0U)
-    {
-        Wifi_Process_Rx();
-    }
-    if (timeout == 0U)
-    {
-        LPI2C_MasterTransferAbortEDMA(cam->instance, &cam->edmaHandle);
-        return kStatus_LPI2C_Timeout;
-    }
-
-    return transferStatus;
+    while (!transferDone) {}
+    return kStatus_Success;
 }
 
 static status_t pixy_recv(pixy_t *cam, uint8_t *buf, size_t len)
 {
-    transferDone   = false;
-    transferStatus = kStatus_Success;
+    transferDone = false;
     lpi2c_master_transfer_t xfer = {
         .slaveAddress   = cam->address,
         .direction      = kLPI2C_Read,
@@ -77,19 +63,8 @@ static status_t pixy_recv(pixy_t *cam, uint8_t *buf, size_t len)
     };
     status_t s = LPI2C_MasterTransferEDMA(cam->instance, &cam->edmaHandle, &xfer);
     if (s != kStatus_Success) return s;
-
-    uint32_t timeout = 500000U;
-    while (!transferDone && --timeout > 0U)
-    {
-        Wifi_Process_Rx();
-    }
-    if (timeout == 0U)
-    {
-        LPI2C_MasterTransferAbortEDMA(cam->instance, &cam->edmaHandle);
-        return kStatus_LPI2C_Timeout;
-    }
-
-    return transferStatus;
+    while (!transferDone) {}
+    return kStatus_Success;
 }
 
 status_t pixy_set_led(pixy_t *cam, uint8_t r, uint8_t g, uint8_t b)

@@ -1,0 +1,14 @@
+../source/detection.c:8:15:detection_parse_vectors	32	static
+../source/detection.c:30:15:detection_vector_length	24	static
+../source/detection.c:39:15:detection_vector_angle_deg	32	static
+../source/detection.c:53:15:detection_vector_inverse_slope	32	static
+../source/detection.c:64:15:detection_filter_vertical	56	static
+../source/detection.c:82:15:get_vector_bottom_x	16	static
+../source/detection.c:88:15:get_vector_bottom_y	16	static
+../source/detection.c:93:13:detection_classify_left_right	48	static
+../source/detection.c:123:13:detection_extract_left_line_track	72	static
+../source/detection.c:174:13:detection_extract_right_line_track	72	static
+../source/detection.c:225:13:detection_calculate_dual_line_steering	48	static
+../source/detection.c:280:6:detection_process_dual_lines	800	static
+../source/detection.c:337:6:detection_detect_turn_track	456	static
+../source/detection.c:420:8:detection_count_horizontal_vectors	216	static

@@ -246,8 +246,8 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
         result->avg_slope      = (left->inverse_slope + right->inverse_slope) / 2.0;
 
-        /* Combined steering: inverse slope heading + center offset correction */
-        result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
+        /* Combined steering: inverse slope heading (-25x) + center offset correction (0.8x) */
+        result->steering_angle = (-25.0 * result->avg_slope) + (result->center_offset * 0.8);
     }
     else if (!has_left && has_right) {
         /* CASE 2: Left line MISSING -> virtual center = right_x - half_track_width */
@@ -256,7 +256,7 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = right->inverse_slope;
 
-        result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
+        result->steering_angle = (-25.0 * result->avg_slope) + (result->center_offset * 0.8);
     }
     else if (has_left && !has_right) {
         /* CASE 3: Right line MISSING -> virtual center = left_x + half_track_width */
@@ -265,7 +265,7 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = left->inverse_slope;
 
-        result->steering_angle = (-1.0 * result->avg_slope) + (result->center_offset * 0.25);
+        result->steering_angle = (-25.0 * result->avg_slope) + (result->center_offset * 0.8);
     }
     else {
         /* CASE 4: Neither line detected */
@@ -404,8 +404,8 @@ bool detection_detect_turn_track(const uint16_t *raw_vectors,
         turn_left = (center_x < (double)PIXY_FRAME_CENTER_X);
     }
 
-    /* Step 6: Output closed turn angle */
-    double steering_angle = turn_left ? -TURN_TRACK_CLOSED_ANGLE : +TURN_TRACK_CLOSED_ANGLE;
+    /* Step 6: Output closed turn angle (scaled to match degrees) */
+    double steering_angle = turn_left ? -25.0 : +25.0;
 
     /* Populate result */
     result->detected       = true;

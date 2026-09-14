@@ -30,11 +30,9 @@ int main2(void)
                 CTIMER0_PWM_PERIOD_CH,
                 CTIMER0_PWM_1_CHANNEL,
                 CTIMER0_PWM_2_CHANNEL,
-                GPIO0, 27U,
-                GPIO0, 26U,
-                GPIO0, 28U,
-                GPIO0, 31U);
-    HbridgeSpeed(&g_hbridge, 40, 40);
+                GPIO0, 24U,
+                GPIO0, 27U);
+    HbridgeSpeed(&g_hbridge, SPEED_LEFT, SPEED_RIGHT);
 
 //    Esc esc1, esc2;
 //    EscInit(&esc1, CTIMER2_PERIPHERAL, CTIMER2_PWM_PERIOD_CH, kCTIMER_Match_1);

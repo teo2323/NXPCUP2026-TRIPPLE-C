@@ -167,21 +167,21 @@ instance:
       - mode: 'kCTIMER_TimerMode'
       - clockSource: 'FunctionClock'
       - clockSourceFreq: 'ClocksTool_DefaultInit'
-      - timerPrescaler: '15'
+      - timerPrescaler: '64'
     - EnableTimerInInit: 'true'
     - pwmConfig:
-      - pwmPeriodChannel: 'kCTIMER_Match_3'
-      - pwmPeriodValueStr: '10khz'
+      - pwmPeriodChannel: 'kCTIMER_Match_0'
+      - pwmPeriodValueStr: '1khz'
       - enableInterrupt: 'false'
       - pwmChannels:
         - 0:
           - pwmChannelPrefixId: 'PWM_1'
           - pwmChannel: 'kCTIMER_Match_1'
-          - pwmDutyValueStr: '0'
+          - pwmDutyValueStr: '50'
           - enableInterrupt: 'false'
         - 1:
           - pwmChannelPrefixId: 'PWM_2'
-          - pwmChannel: 'kCTIMER_Match_0'
+          - pwmChannel: 'kCTIMER_Match_2'
           - pwmDutyValueStr: '50'
           - enableInterrupt: 'false'
     - interruptCallbackConfig:
@@ -195,7 +195,7 @@ instance:
 const ctimer_config_t CTIMER0_config = {
   .mode = kCTIMER_TimerMode,
   .input = kCTIMER_Capture_0,
-  .prescale = 14
+  .prescale = 63
 };
 
 static void CTIMER0_init(void) {
@@ -203,7 +203,7 @@ static void CTIMER0_init(void) {
   CTIMER_Init(CTIMER0_PERIPHERAL, &CTIMER0_config);
   /* PWM channel 1 of CTIMER0 peripheral initialization */
   CTIMER_SetupPwmPeriod(CTIMER0_PERIPHERAL, CTIMER0_PWM_PERIOD_CH, CTIMER0_PWM_1_CHANNEL, CTIMER0_PWM_PERIOD, CTIMER0_PWM_1_DUTY, false);
-  /* PWM channel 0 of CTIMER0 peripheral initialization */
+  /* PWM channel 2 of CTIMER0 peripheral initialization */
   CTIMER_SetupPwmPeriod(CTIMER0_PERIPHERAL, CTIMER0_PWM_PERIOD_CH, CTIMER0_PWM_2_CHANNEL, CTIMER0_PWM_PERIOD, CTIMER0_PWM_2_DUTY, false);
   /* Start the timer */
   CTIMER_StartTimer(CTIMER0_PERIPHERAL);
@@ -254,60 +254,6 @@ static void GPIO0_init(void) {
   EnableIRQ(GPIO0_INT_0_IRQN);
   /* Enable interrupt GPIO0_INT_1_IRQN request in the NVIC */
   EnableIRQ(GPIO0_INT_1_IRQN);
-}
-
-/***********************************************************************************************************************
- * CTIMER2 initialization code
- **********************************************************************************************************************/
-/* clang-format off */
-/* TEXT BELOW IS USED AS SETTING FOR TOOLS *************************************
-instance:
-- name: 'CTIMER2'
-- type: 'ctimer'
-- mode: 'PWM'
-- custom_name_enabled: 'false'
-- type_id: 'ctimer_2.2.2'
-- functional_group: 'BOARD_InitPeripherals'
-- peripheral: 'CTIMER2'
-- config_sets:
-  - fsl_ctimer:
-    - ctimerConfig:
-      - mode: 'kCTIMER_TimerMode'
-      - clockSource: 'FunctionClock'
-      - clockSourceFreq: 'ClocksTool_DefaultInit'
-      - timerPrescaler: '150'
-    - EnableTimerInInit: 'true'
-    - pwmConfig:
-      - pwmPeriodChannel: 'kCTIMER_Match_0'
-      - pwmPeriodValueStr: '50hz'
-      - enableInterrupt: 'false'
-      - pwmChannels:
-        - 0:
-          - pwmChannelPrefixId: 'PWM_3'
-          - pwmChannel: 'kCTIMER_Match_2'
-          - pwmDutyValueStr: '50'
-          - enableInterrupt: 'false'
-    - interruptCallbackConfig:
-      - interrupt:
-        - IRQn: 'CTIMER1_IRQn'
-        - enable_priority: 'false'
-        - priority: '0'
-      - callback: 'kCTIMER_NoCallback'
- * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
-/* clang-format on */
-const ctimer_config_t CTIMER2_config = {
-  .mode = kCTIMER_TimerMode,
-  .input = kCTIMER_Capture_0,
-  .prescale = 149
-};
-
-static void CTIMER2_init(void) {
-  /* CTIMER2 peripheral initialization */
-  CTIMER_Init(CTIMER2_PERIPHERAL, &CTIMER2_config);
-  /* PWM channel 2 of CTIMER2 peripheral initialization */
-  CTIMER_SetupPwmPeriod(CTIMER2_PERIPHERAL, CTIMER2_PWM_PERIOD_CH, CTIMER2_PWM_3_CHANNEL, CTIMER2_PWM_PERIOD, CTIMER2_PWM_3_DUTY, false);
-  /* Start the timer */
-  CTIMER_StartTimer(CTIMER2_PERIPHERAL);
 }
 
 /***********************************************************************************************************************
@@ -485,231 +431,57 @@ static void CTIMER4_init(void) {
 }
 
 /***********************************************************************************************************************
- * LP_FLEXCOMM0 initialization code
+ * CTIMER2 initialization code
  **********************************************************************************************************************/
 /* clang-format off */
 /* TEXT BELOW IS USED AS SETTING FOR TOOLS *************************************
 instance:
-- name: 'LP_FLEXCOMM0'
-- type: 'lpflexcomm_lpi2c'
-- mode: 'polling'
-- custom_name_enabled: 'false'
-- type_id: 'lpflexcomm_lpi2c_2.1.1'
-- functional_group: 'BOARD_InitPeripherals'
-- peripheral: 'LP_FLEXCOMM0'
-- config_sets:
-  - generalCfg:
-    - lpi2c_mode: 'master'
-    - clock_configuration:
-      - clockSource: 'LPFLEXCOMMFunctionClock'
-      - clockSourceFreq: 'ClocksTool_DefaultInit'
-    - master_config:
-      - enableMaster: 'true'
-      - enableDoze: 'true'
-      - debugEnable: 'false'
-      - ignoreAck: 'false'
-      - pinConfig: 'kLPI2C_2PinOpenDrain'
-      - baudRate_Hz: '100000'
-      - realBaudRateCount: []
-      - busIdleTimeout_ns: '0'
-      - pinLowTimeout_ns: '0'
-      - sdaGlitchFilterWidth_ns: '0'
-      - sclGlitchFilterWidth_ns: '0'
-      - hostRequest:
-        - enable: 'false'
-        - source: 'kLPI2C_HostRequestExternalPin'
-        - polarity: 'kLPI2C_HostRequestPinActiveHigh'
-      - enable_dma_master: 'false'
-      - lpi2c_dma_master_struct_t:
-        - DMATxEnable: 'true'
-        - DMARxEnable: 'true'
-    - quick_selection: 'qs_default'
- * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
-/* clang-format on */
-const lpi2c_master_config_t LP_FLEXCOMM0_masterConfig = {
-  .enableMaster = true,
-  .enableDoze = true,
-  .debugEnable = false,
-  .ignoreAck = false,
-  .pinConfig = kLPI2C_2PinOpenDrain,
-  .baudRate_Hz = 100000UL,
-  .busIdleTimeout_ns = 0UL,
-  .pinLowTimeout_ns = 0UL,
-  .sdaGlitchFilterWidth_ns = 0U,
-  .sclGlitchFilterWidth_ns = 0U,
-  .hostRequest = {
-    .enable = false,
-    .source = kLPI2C_HostRequestExternalPin,
-    .polarity = kLPI2C_HostRequestPinActiveHigh
-  }
-};
-
-static void LP_FLEXCOMM0_init(void) {
-  /* LP_FLEXCOMM0 LPI2C leader initialization */
-  LPI2C_MasterInit(LP_FLEXCOMM0_PERIPHERAL, &LP_FLEXCOMM0_masterConfig, LP_FLEXCOMM0_CLOCK_SOURCE);
-}
-
-/***********************************************************************************************************************
- * CTIMER3 initialization code
- **********************************************************************************************************************/
-/* clang-format off */
-/* TEXT BELOW IS USED AS SETTING FOR TOOLS *************************************
-instance:
-- name: 'CTIMER3'
+- name: 'CTIMER2'
 - type: 'ctimer'
 - mode: 'PWM'
 - custom_name_enabled: 'false'
 - type_id: 'ctimer_2.2.2'
 - functional_group: 'BOARD_InitPeripherals'
-- peripheral: 'CTIMER3'
+- peripheral: 'CTIMER2'
 - config_sets:
   - fsl_ctimer:
     - ctimerConfig:
       - mode: 'kCTIMER_TimerMode'
       - clockSource: 'FunctionClock'
       - clockSourceFreq: 'ClocksTool_DefaultInit'
-      - timerPrescaler: '150'
+      - timerPrescaler: '150Mhz'
     - EnableTimerInInit: 'true'
     - pwmConfig:
-      - pwmPeriodChannel: 'kCTIMER_Match_3'
+      - pwmPeriodChannel: 'kCTIMER_Match_0'
       - pwmPeriodValueStr: '50hz'
       - enableInterrupt: 'false'
       - pwmChannels:
         - 0:
-          - pwmChannelPrefixId: 'PWM_1'
-          - pwmChannel: 'kCTIMER_Match_0'
-          - pwmDutyValueStr: '0'
+          - pwmChannelPrefixId: 'PWM_2'
+          - pwmChannel: 'kCTIMER_Match_2'
+          - pwmDutyValueStr: '225000'
           - enableInterrupt: 'false'
     - interruptCallbackConfig:
       - interrupt:
-        - IRQn: 'CTIMER3_IRQn'
+        - IRQn: 'CTIMER1_IRQn'
         - enable_priority: 'false'
         - priority: '0'
       - callback: 'kCTIMER_NoCallback'
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
 /* clang-format on */
-const ctimer_config_t CTIMER3_config = {
+const ctimer_config_t CTIMER2_config = {
   .mode = kCTIMER_TimerMode,
   .input = kCTIMER_Capture_0,
-  .prescale = 149
+  .prescale = 0
 };
 
-static void CTIMER3_init(void) {
-  /* CTIMER3 peripheral initialization */
-  CTIMER_Init(CTIMER3_PERIPHERAL, &CTIMER3_config);
-  /* PWM channel 0 of CTIMER3 peripheral initialization */
-  CTIMER_SetupPwmPeriod(CTIMER3_PERIPHERAL, CTIMER3_PWM_PERIOD_CH, CTIMER3_PWM_1_CHANNEL, CTIMER3_PWM_PERIOD, CTIMER3_PWM_1_DUTY, false);
+static void CTIMER2_init(void) {
+  /* CTIMER2 peripheral initialization */
+  CTIMER_Init(CTIMER2_PERIPHERAL, &CTIMER2_config);
+  /* PWM channel 2 of CTIMER2 peripheral initialization */
+  CTIMER_SetupPwmPeriod(CTIMER2_PERIPHERAL, CTIMER2_PWM_PERIOD_CH, CTIMER2_PWM_2_CHANNEL, CTIMER2_PWM_PERIOD, CTIMER2_PWM_2_DUTY, false);
   /* Start the timer */
-  CTIMER_StartTimer(CTIMER3_PERIPHERAL);
-}
-
-/***********************************************************************************************************************
- * LP_FLEXCOMM3 initialization code
- **********************************************************************************************************************/
-/* clang-format off */
-/* TEXT BELOW IS USED AS SETTING FOR TOOLS *************************************
-instance:
-- name: 'LP_FLEXCOMM3'
-- type: 'lpflexcomm_lpuart'
-- mode: 'polling'
-- custom_name_enabled: 'false'
-- type_id: 'lpflexcomm_lpuart_2.3.0'
-- functional_group: 'BOARD_InitPeripherals'
-- peripheral: 'LP_FLEXCOMM3'
-- config_sets:
-  - fsl_lpuart:
-    - lpuartConfig:
-      - timingConfig:
-        - clockSource: 'LPFLEXCOMMFunctionClock'
-        - lpuartSrcClkFreq: 'custom:12000000'
-        - baudRateBpsStr: '115200'
-      - parityMode: 'kLPUART_ParityDisabled'
-      - dataBitsCount: 'kLPUART_EightDataBits'
-      - isMsb: 'false'
-      - stopBitCount: 'kLPUART_OneStopBit'
-      - enableMatchAddress1: 'false'
-      - matchAddress1: '0'
-      - enableMatchAddress2: 'false'
-      - matchAddress2: '0'
-      - txFifoWatermark: '0'
-      - rxFifoWatermark: '1'
-      - enableRxRTS: 'false'
-      - rtsDelayValue: '1'
-      - enableTxCTS: 'false'
-      - txCtsSource: 'kLPUART_CtsSourcePin'
-      - txCtsConfig: 'kLPUART_CtsSampleAtStart'
-      - rxIdleType: 'kLPUART_IdleTypeStartBit'
-      - rxIdleConfig: 'kLPUART_IdleCharacter1'
-      - enableSingleWire: 'false'
-      - enableTx: 'true'
-      - enableRx: 'true'
-      - timeoutConfig:
-        - rxExtendedTimeoutValue: '0'
-        - txExtendedTimeoutValue: '0'
-        - rxCounter0:
-          - enableCounter: 'false'
-          - timeoutCondition: 'kLPUART_TimeoutAfterCharacters'
-          - timeoutValue: '0'
-        - rxCounter1:
-          - enableCounter: 'false'
-          - timeoutCondition: 'kLPUART_TimeoutAfterCharacters'
-          - timeoutValue: '0'
-        - txCounter0:
-          - enableCounter: 'false'
-          - timeoutCondition: 'kLPUART_TimeoutAfterCharacters'
-          - timeoutValue: '0'
-        - txCounter1:
-          - enableCounter: 'false'
-          - timeoutCondition: 'kLPUART_TimeoutAfterCharacters'
-          - timeoutValue: '0'
- * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
-/* clang-format on */
-const lpuart_config_t LP_FLEXCOMM3_config = {
-  .baudRate_Bps = 115200UL,
-  .parityMode = kLPUART_ParityDisabled,
-  .dataBitsCount = kLPUART_EightDataBits,
-  .isMsb = false,
-  .stopBitCount = kLPUART_OneStopBit,
-  .txFifoWatermark = 0U,
-  .rxFifoWatermark = 1U,
-  .enableRxRTS = false,
-  .enableTxCTS = false,
-  .txCtsSource = kLPUART_CtsSourcePin,
-  .txCtsConfig = kLPUART_CtsSampleAtStart,
-  .rxIdleType = kLPUART_IdleTypeStartBit,
-  .rxIdleConfig = kLPUART_IdleCharacter1,
-  .enableSingleWire = false,
-  .rtsDelay = 0,
-  .enableTx = true,
-  .enableRx = true,
-  .timeoutConfig = {
-    .rxExtendedTimeoutValue = 0U,
-    .txExtendedTimeoutValue = 0U,
-    .rxCounter0 = {
-      .enableCounter = false,
-      .timeoutCondition = kLPUART_TimeoutAfterCharacters,
-      .timeoutValue = 0U
-    },
-    .rxCounter1 = {
-      .enableCounter = false,
-      .timeoutCondition = kLPUART_TimeoutAfterCharacters,
-      .timeoutValue = 0U
-    },
-    .txCounter0 = {
-      .enableCounter = false,
-      .timeoutCondition = kLPUART_TimeoutAfterCharacters,
-      .timeoutValue = 0U
-    },
-    .txCounter1 = {
-      .enableCounter = false,
-      .timeoutCondition = kLPUART_TimeoutAfterCharacters,
-      .timeoutValue = 0U
-    }
-  }
-};
-
-static void LP_FLEXCOMM3_init(void) {
-  LPUART_Init(LP_FLEXCOMM3_PERIPHERAL, &LP_FLEXCOMM3_config, LP_FLEXCOMM3_CLOCK_SOURCE);
+  CTIMER_StartTimer(CTIMER2_PERIPHERAL);
 }
 
 /***********************************************************************************************************************
@@ -740,12 +512,9 @@ void BOARD_InitPeripherals(void)
   /* Initialize components */
   CTIMER0_init();
   GPIO0_init();
-  CTIMER2_init();
   LP_FLEXCOMM2_init();
   CTIMER4_init();
-  LP_FLEXCOMM0_init();
-  CTIMER3_init();
-  LP_FLEXCOMM3_init();
+  CTIMER2_init();
   /* Common post-initialization */
   BOARD_InitPeripherals_CommonPostInit();
 }
