@@ -1,8 +1,13 @@
 #include "detection.h"
+#include "Config.h"
 #include <math.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
+#endif
+
+#ifndef SHARP_TURN_ANGLE_THRESHOLD
+#define SHARP_TURN_ANGLE_THRESHOLD 35.0
 #endif
 
 static size_t detection_parse_vectors(const uint16_t *raw_vectors,
@@ -328,8 +333,8 @@ void detection_process_dual_lines(const uint16_t *raw_vectors,
         }
     }
 
-    if ((left_line.detected && fabs(left_line.angle_deg) > 35.0) ||
-        (right_line.detected && fabs(right_line.angle_deg) > 35.0)) {
+    if ((left_line.detected && fabs(left_line.angle_deg) > SHARP_TURN_ANGLE_THRESHOLD) ||
+        (right_line.detected && fabs(right_line.angle_deg) > SHARP_TURN_ANGLE_THRESHOLD)) {
         result->sharp_turn_detected = true;
     }
 }

@@ -16,6 +16,21 @@
 
 #define MAX_VECTORS 10
 
+static inline double compute_unified_pid(double error, double *previous_error)
+{
+    /* D term: calculated from error difference */
+    double derivative = error - *previous_error;
+    *previous_error   = error;
+
+    /* Unified P + D combination */
+    double steer_angle = (STEERING_KP * error) + (STEERING_KD * derivative);
+
+    if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
+    if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
+
+    return steer_angle;
+}
+
 int main(void)
 {
     uint16_t vectors[MAX_VECTORS * 4];
@@ -38,7 +53,7 @@ int main(void)
     pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
     pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active mode
 
-    /* Drive speed hardcoded to constant 60 for both motors */
+    /* Initial base drive speed and straight steering */
     HbridgeSpeed(&g_hbridge, SPEED_LEFT, SPEED_RIGHT);
     Steer(0 + STEERING_OFFSET);
 
@@ -47,51 +62,35 @@ int main(void)
 
     while (1)
     {
-        /* Maintain continuous constant motor speed (60) */
-        HbridgeSpeed(&g_hbridge, SPEED_LEFT, SPEED_RIGHT);
-
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
 
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
 
+            bool is_sharp_turn = false;
+
             if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present)) {
-                /* Continuous PID steering control */
-                double error = det.steering_angle;
-
-                /* D term: calculated from raw error difference */
-                double derivative = error - previous_error;
-                previous_error    = error;
-
-                /* P + D combination: output = P*error + D*derivative */
-                double p_term = (error > 0) ? (STEERING_P_RIGHT * error) : (STEERING_P_LEFT * error);
-                double d_term = (derivative > 0) ? (STEERING_D_RIGHT * derivative) : (STEERING_D_LEFT * derivative);
-                double steer_angle = p_term + d_term;
-
-                if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
-                if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
+                /* Continuous Unified PID steering control */
+                double steer_angle = compute_unified_pid(det.steering_angle, &previous_error);
 
                 Steer(steer_angle + STEERING_OFFSET);
                 last_steering_angle = steer_angle;
+
+                if (det.sharp_turn_detected) {
+                    is_sharp_turn = true;
+                }
             }
             else {
                 /* 0 track lines detected -> search for horizontal turn-track fallback vector */
                 turn_track_result_t turn;
                 if (detection_detect_turn_track(vectors, num_vectors, &turn)) {
-                    double error = turn.steering_angle;
-
-                    double derivative = error - previous_error;
-                    previous_error    = error;
-
-                    double p_term = (error > 0) ? (STEERING_P_RIGHT * error) : (STEERING_P_LEFT * error);
-                    double d_term = (derivative > 0) ? (STEERING_D_RIGHT * derivative) : (STEERING_D_LEFT * derivative);
-                    double steer_angle = p_term + d_term;
-
-                    if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
-                    if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
+                    double steer_angle = compute_unified_pid(turn.steering_angle, &previous_error);
 
                     Steer(steer_angle + STEERING_OFFSET);
                     last_steering_angle = steer_angle;
+
+                    /* Horizontal fallback vector indicates a sharp turn in progress */
+                    is_sharp_turn = true;
                 }
                 else {
                     /* No vectors detected -> gently decay angle using DECAY_FACTOR (0.9) */
@@ -102,6 +101,17 @@ int main(void)
                     Steer(last_steering_angle + STEERING_OFFSET);
                 }
             }
+
+            /* Dynamic speed control based on sharp turn detection */
+            int16_t current_speed_left  = SPEED_LEFT;
+            int16_t current_speed_right = SPEED_RIGHT;
+
+            if (is_sharp_turn) {
+                current_speed_left  = (int16_t)(SPEED_LEFT * SHARP_TURN_SPEED_COEFF);
+                current_speed_right = (int16_t)(SPEED_RIGHT * SHARP_TURN_SPEED_COEFF);
+            }
+
+            HbridgeSpeed(&g_hbridge, current_speed_left, current_speed_right);
         }
     }
 }
