@@ -1,6 +1,7 @@
 #include "fsl_ctimer.h"
 #include "peripherals.h"
 #include "fsl_debug_console.h"
+#include "Config.h"
 
 #define SERVO_OFFSET -3
 
@@ -25,7 +26,7 @@ void TestServo(){
 	volatile int Delay;
 	volatile int SteerStrength;
 	while(1){
-		for(SteerStrength = -45; SteerStrength <=45; SteerStrength++){
+		for(SteerStrength = STEERING_LIMIT_LEFT; SteerStrength <=STEERING_LIMIT_RIGHT; SteerStrength++){
 			Delay = 200000;
 			while(Delay){
 				Delay--;
