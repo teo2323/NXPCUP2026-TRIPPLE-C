@@ -16,14 +16,24 @@
 
 #define MAX_VECTORS 10
 
-static inline double compute_unified_pid(double error, double *previous_error)
+static inline double compute_variable_pid(double error, double *previous_error, bool is_sharp_turn)
 {
     /* D term: calculated from error difference */
     double derivative = error - *previous_error;
     *previous_error   = error;
 
-    /* Unified P + D combination */
-    double steer_angle = (STEERING_KP * error) + (STEERING_KD * derivative);
+    /* 2-Zone Gain Selection: Straight vs Curve */
+    double kp, kd;
+    if (fabs(error) > CURVE_ERROR_THRESHOLD || is_sharp_turn) {
+        kp = STEERING_KP_CURVE;
+        kd = STEERING_KD_CURVE;
+    } else {
+        kp = STEERING_KP_STRAIGHT;
+        kd = STEERING_KD_STRAIGHT;
+    }
+
+    /* Variable P + D output */
+    double steer_angle = (kp * error) + (kd * derivative);
 
     if (steer_angle > STEERING_LIMIT_RIGHT) steer_angle = STEERING_LIMIT_RIGHT;
     if (steer_angle < STEERING_LIMIT_LEFT)  steer_angle = STEERING_LIMIT_LEFT;
@@ -67,30 +77,48 @@ int main(void)
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
 
+            /* Display line detection status and coordinates */
+            if (det.left_line_present) {
+                PRINTF("Left Line: DETECTED  | Start: (%u, %u), End: (%u, %u)\r\n",
+                       det.left_line.vector.x0, det.left_line.vector.y0,
+                       det.left_line.vector.x1, det.left_line.vector.y1);
+            } else {
+                PRINTF("Left Line: NOT DETECTED\r\n");
+            }
+
+            if (det.right_line_present) {
+                PRINTF("Right Line: DETECTED | Start: (%u, %u), End: (%u, %u)\r\n",
+                       det.right_line.vector.x0, det.right_line.vector.y0,
+                       det.right_line.vector.x1, det.right_line.vector.y1);
+            } else {
+                PRINTF("Right Line: NOT DETECTED\r\n");
+            }
+
             bool is_sharp_turn = false;
 
             if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present)) {
-                /* Continuous Unified PID steering control */
-                double steer_angle = compute_unified_pid(det.steering_angle, &previous_error);
-
-                Steer(steer_angle + STEERING_OFFSET);
-                last_steering_angle = steer_angle;
-
                 if (det.sharp_turn_detected) {
                     is_sharp_turn = true;
                 }
+
+                /* 2-Zone Variable PID steering control */
+                double steer_angle = compute_variable_pid(det.steering_angle, &previous_error, is_sharp_turn);
+
+                Steer(steer_angle + STEERING_OFFSET);
+                last_steering_angle = steer_angle;
             }
             else {
                 /* 0 track lines detected -> search for horizontal turn-track fallback vector */
                 turn_track_result_t turn;
                 if (detection_detect_turn_track(vectors, num_vectors, &turn)) {
-                    double steer_angle = compute_unified_pid(turn.steering_angle, &previous_error);
+                    /* Horizontal fallback vector indicates a sharp turn in progress */
+                    is_sharp_turn = true;
+
+                    /* 2-Zone Variable PID steering control */
+                    double steer_angle = compute_variable_pid(turn.steering_angle, &previous_error, is_sharp_turn);
 
                     Steer(steer_angle + STEERING_OFFSET);
                     last_steering_angle = steer_angle;
-
-                    /* Horizontal fallback vector indicates a sharp turn in progress */
-                    is_sharp_turn = true;
                 }
                 else {
                     /* No vectors detected -> gently decay angle using DECAY_FACTOR (0.9) */

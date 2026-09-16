@@ -15,7 +15,7 @@ extern "C" {
 #define PIXY_FRAME_CENTER_X            39U
 
 /* Default Detection & Track Constants */
-#define DETECTION_MIN_DY_VERTICAL      8.0
+#define DETECTION_MIN_DY_VERTICAL      8.5
 #define DUAL_LINE_HALF_TRACK_DEFAULT   25.0  /* Half track width in pixels (~50px full track) */
 #define DETECTION_MIN_DX_HORIZONTAL    15   /* Minimum |dx| in pixels for a vector to be considered horizontal */
 #define TURN_TRACK_CLOSED_ANGLE        1.6  /* Raw angle output for closed turn */
