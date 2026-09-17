@@ -14,17 +14,16 @@
 #define CURVE_ERROR_THRESHOLD      10.0
 
 // Physical steering limits (KEPT FROM bootcampWorkspace)
-#define STEERING_LIMIT_RIGHT  60
-#define STEERING_LIMIT_LEFT  -67
+#define STEERING_LIMIT_RIGHT  65
+#define STEERING_LIMIT_LEFT  -60
 
 // Steering angle offset (KEPT FROM bootcampWorkspace)
-#define STEERING_OFFSET      16
+#define STEERING_OFFSET      0
 
 // Base wheel speeds
 #define SPEED_RIGHT           90
 #define SPEED_LEFT            90
 #define SHARP_TURN_SPEED_COEFF 0.2
-
 // Sharp turn angle detection threshold in degrees
 #define SHARP_TURN_ANGLE_THRESHOLD 30
 
