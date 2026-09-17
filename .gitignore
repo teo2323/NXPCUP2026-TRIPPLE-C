@@ -1,0 +1,43 @@
+﻿# MCUXpresso / VS Code local configuration
+mcux_include.json
+.vscode/
+
+# Build outputs
+Debug/
+Release/
+build/
+bin/
+obj/
+linkerScripts/
+
+# Compiler/Linker Outputs in case they are built in the source dir
+*.elf
+*.axf
+*.map
+*.hex
+*.bin
+*.o
+*.obj
+*.su
+*.d
+
+# CMake and Ninja generated files
+CMakeCache.txt
+CMakeFiles/
+CMakeConfigureLog.yaml
+cmake_install.cmake
+compile_commands.json
+rules.ninja
+build.ninja
+.ninja_deps
+.ninja_log
+
+# MSVC / VS local settings
+.vs/
+
+# Other temporary or local files
+*.bak
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
