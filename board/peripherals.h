@@ -17,6 +17,7 @@
 #include "fsl_gpio.h"
 #include "fsl_lpi2c.h"
 #include "fsl_lpi2c_edma.h"
+#include "fsl_lpuart.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -121,6 +122,9 @@ extern "C" {
 #define CTIMER2_PWM_2_CHANNEL kCTIMER_Match_2
 /* Definition of channel 2 duty */
 #define CTIMER2_PWM_2_DUTY 2775000
+/* BOARD_InitPeripherals defines for LP_FLEXCOMM7 (ESP32 UART on P3_2 / P3_3) */
+#define LP_FLEXCOMM7_PERIPHERAL ((LPUART_Type *) LP_FLEXCOMM7)
+#define LP_FLEXCOMM7_CLOCK_SOURCE 12000000UL
 
 /***********************************************************************************************************************
  * Global variables
@@ -135,6 +139,7 @@ extern uint8_t LP_FLEXCOMM2_master_buffer[LP_FLEXCOMM2_MASTER_BUFFER_SIZE];
 extern lpi2c_master_transfer_t LP_FLEXCOMM2_masterTransfer;
 extern const ctimer_config_t CTIMER4_config;
 extern const ctimer_config_t CTIMER2_config;
+extern const lpuart_config_t LP_FLEXCOMM7_config;
 
 /***********************************************************************************************************************
  * Initialization functions

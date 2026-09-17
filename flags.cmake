@@ -39,7 +39,7 @@ set(CMAKE_C_FLAGS_DEBUG " \
     -fno-common \
     -fmerge-constants \
     -g3 \
-    -mcpu=cortex-m33 -ffunction-sections -fdata-sections -fno-builtin -imacros \"${ProjDirPath}/source/mcux_config.h\" \
+    -mcpu=cortex-m33 -ffunction-sections -fdata-sections -fno-builtin -imacros \"mcux_config.h\" \
     -fstack-usage \
     -mcpu=cortex-m33 \
     -mthumb \
@@ -78,6 +78,9 @@ set(CMAKE_EXE_LINKER_FLAGS_DEBUG " \
     --cref \
     -mcpu=cortex-m33 \
     -mthumb \
-    -T\"${ProjDirPath}/nxpcup_official_Debug.ld\" \
-    -L\"${ProjDirPath}/linkerScripts/Debug\" \
+    -L\"..\" \
+    -L\".\" \
+    -L\"../linkerScripts/Debug\" \
+    -L\"linkerScripts/Debug\" \
+    -T\"nxpcup_official_Debug.ld\" \
 ")

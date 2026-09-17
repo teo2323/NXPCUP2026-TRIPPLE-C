@@ -16,6 +16,7 @@
 		<item key="WizardProjectsImportPage.STORE_CLOSE_CREATED_PROJECTS_ID" value="false"/>
 		<item key="WizardProjectsImportPage.STORE_HIDE_CONFLICTING_PROJECTS_ID" value="false"/>
 		<list key="WizardProjectsImportPage.STORE_DIRECTORIES">
+			<item value="E:\Facultate\Practica\NXP2026\NXPCUP2026-TRIPPLE-C"/>
 			<item value="D:\Facultate\FACULTATE\an2\sem2\robotica\NXPCUP2026-TRIPPLE-C"/>
 		</list>
 		<list key="WizardProjectsImportPage.STORE_ARCHIVES">

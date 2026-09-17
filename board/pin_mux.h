@@ -66,6 +66,42 @@ void BOARD_InitBootPins(void);
 #define BOARD_INITPINS_LED_GREEN_PIN_MASK (1U << 27U)      /*!<@brief PORT pin mask */
                                                            /* @} */
 
+/*! @name PORT4_1 (coord P2), P4_1/J8[3]/SJ15[1]
+  @{ */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITPINS_ESP_OLD_PORT PORT4               /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_ESP_OLD_PIN 1U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_ESP_OLD_PIN_MASK (1U << 1U)      /*!<@brief PORT pin mask */
+                                                        /* @} */
+
+/*! @name PORT4_0 (coord P1), P4_0/J8[4]/SJ14[1]
+  @{ */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITPINS_ESP_OLD2_PORT PORT4               /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_ESP_OLD2_PIN 0U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_ESP_OLD2_PIN_MASK (1U << 0U)      /*!<@brief PORT pin mask */
+                                                         /* @} */
+
+/*! @name PORT3_3 (coord D16), P3_3/J9[19]/SJ12[1]
+  @{ */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITPINS_ESP_TX_PORT PORT3               /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_ESP_TX_PIN 3U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_ESP_TX_PIN_MASK (1U << 3U)      /*!<@brief PORT pin mask */
+                                                       /* @} */
+
+/*! @name PORT3_2 (coord D15), P3_2/J9[20]/J7[8]
+  @{ */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITPINS_ESP_RX_PORT PORT3               /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_ESP_RX_PIN 2U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_ESP_RX_PIN_MASK (1U << 2U)      /*!<@brief PORT pin mask */
+                                                       /* @} */
+
 /*!
  * @brief Configures pin routing and optionally pin electrical features.
  *

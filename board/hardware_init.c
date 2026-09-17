@@ -22,6 +22,10 @@ void BOARD_InitHardware(void)
     CLOCK_SetClkDiv(kCLOCK_DivFlexcom4Clk, 1u);
     CLOCK_AttachClk(BOARD_DEBUG_UART_CLK_ATTACH);
 
+    /* attach FRO 12M to FLEXCOMM7 (ESP32 UART on P3_2 / P3_3) */
+    CLOCK_SetClkDiv(kCLOCK_DivFlexcom7Clk, 1u);
+    CLOCK_AttachClk(kFRO12M_to_FLEXCOMM7);
+
     /* attach TRACECLKDIV to TRACE */
     CLOCK_SetClkDiv(kCLOCK_DivTraceClk, 2U);
     CLOCK_AttachClk(kTRACE_DIV_to_TRACE);

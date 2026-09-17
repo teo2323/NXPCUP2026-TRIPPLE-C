@@ -1,4 +1,4 @@
-D:/Facultate/FACULTATE/an2/sem2/robotica/NXPCUP2026-TRIPPLE-C/drivers/fsl_gpio.h:345:20:GPIO_PinWrite	24	static
-D:/Facultate/FACULTATE/an2/sem2/robotica/NXPCUP2026-TRIPPLE-C/source/hbridge.c:10:6:HbridgeInit	40	static
-D:/Facultate/FACULTATE/an2/sem2/robotica/NXPCUP2026-TRIPPLE-C/source/hbridge.c:31:6:HbridgeSpeed	24	static
-D:/Facultate/FACULTATE/an2/sem2/robotica/NXPCUP2026-TRIPPLE-C/source/hbridge.c:52:6:HbridgeBrake	16	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_gpio.h:345:20:GPIO_PinWrite	24	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/hbridge.c:10:6:HbridgeInit	40	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/hbridge.c:31:6:HbridgeSpeed	24	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/hbridge.c:52:6:HbridgeBrake	16	static

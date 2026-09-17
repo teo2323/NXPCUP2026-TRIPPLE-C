@@ -485,6 +485,25 @@ static void CTIMER2_init(void) {
 }
 
 /***********************************************************************************************************************
+ * LP_FLEXCOMM7 initialization code (LPUART7 for ESP32)
+ **********************************************************************************************************************/
+const lpuart_config_t LP_FLEXCOMM7_config = {
+  .baudRate_Bps = 115200UL,
+  .parityMode = kLPUART_ParityDisabled,
+  .dataBitsCount = kLPUART_EightDataBits,
+  .isMsb = false,
+  .stopBitCount = kLPUART_OneStopBit,
+  .txFifoWatermark = 0U,
+  .rxFifoWatermark = 0U,
+  .enableTx = true,
+  .enableRx = true
+};
+
+static void LP_FLEXCOMM7_init(void) {
+  LPUART_Init(LP_FLEXCOMM7_PERIPHERAL, &LP_FLEXCOMM7_config, LP_FLEXCOMM7_CLOCK_SOURCE);
+}
+
+/***********************************************************************************************************************
  * Initialization functions
  **********************************************************************************************************************/
 static void BOARD_InitPeripherals_CommonPostInit(void)
@@ -515,6 +534,7 @@ void BOARD_InitPeripherals(void)
   LP_FLEXCOMM2_init();
   CTIMER4_init();
   CTIMER2_init();
+  LP_FLEXCOMM7_init();
   /* Common post-initialization */
   BOARD_InitPeripherals_CommonPostInit();
 }

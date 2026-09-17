@@ -63,8 +63,11 @@ int main(void)
     pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
     pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active mode
 
+    Wifi_Init();
+
     /* Initial base drive speed and straight steering */
-    HbridgeSpeed(&g_hbridge, SPEED_LEFT, SPEED_RIGHT);
+    int16_t initial_speed = g_engine_enabled ? (int16_t)g_motor_speed : 0;
+    HbridgeSpeed(&g_hbridge, initial_speed, initial_speed);
     Steer(0 + STEERING_OFFSET);
 
     double last_steering_angle = 0.0;
@@ -72,27 +75,38 @@ int main(void)
 
     while (1)
     {
+        Wifi_Process_Rx();
+
+        /* Periodic Dual-Duplex Communication Test between FRDM and ESP32 (~1 Hz) */
+        static uint32_t comm_test_tick = 0U;
+        static uint32_t ping_seq = 0U;
+        if (++comm_test_tick >= 60U)
+        {
+            comm_test_tick = 0U;
+            ping_seq++;
+            Wifi_SendPing(ping_seq);
+
+            PRINTF("\r\n======================================================\r\n");
+            PRINTF(" [DUAL-DUPLEX COMM TEST] FRDM <-> ESP32 (LPUART7 @ 115200)\r\n");
+            PRINTF("  FRDM TX -> ESP32: %lu packets sent (Sent PING #%lu)\r\n",
+                   (unsigned long)g_wifi_tx_count, (unsigned long)ping_seq);
+            PRINTF("  FRDM RX <- ESP32: %lu packets received\r\n",
+                   (unsigned long)g_wifi_rx_count);
+            if (g_wifi_rx_count > 0U) {
+                PRINTF("  >>> STATUS: [FULL-DUPLEX ACTIVE - BIDIRECTIONAL OK] <<<\r\n");
+                PRINTF("  Last Msg from ESP32: \"%s\"\r\n", g_wifi_last_rx_cmd);
+            } else {
+                PRINTF("  >>> STATUS: [WAITING FOR ESP32 RX - TX ONLY] <<<\r\n");
+                PRINTF("  Check: ESP32 TX (GPIO17) -> FRDM RX (P3_2), Shared GND\r\n");
+            }
+            PRINTF("======================================================\r\n\r\n");
+        }
+
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
+            Wifi_Process_Rx();
 
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
-
-            /* Display line detection status and coordinates */
-            if (det.left_line_present) {
-                PRINTF("Left Line: DETECTED  | Start: (%u, %u), End: (%u, %u)\r\n",
-                       det.left_line.vector.x0, det.left_line.vector.y0,
-                       det.left_line.vector.x1, det.left_line.vector.y1);
-            } else {
-                PRINTF("Left Line: NOT DETECTED\r\n");
-            }
-
-            if (det.right_line_present) {
-                PRINTF("Right Line: DETECTED | Start: (%u, %u), End: (%u, %u)\r\n",
-                       det.right_line.vector.x0, det.right_line.vector.y0,
-                       det.right_line.vector.x1, det.right_line.vector.y1);
-            } else {
-                PRINTF("Right Line: NOT DETECTED\r\n");
-            }
 
             bool is_sharp_turn = false;
 
@@ -130,16 +144,72 @@ int main(void)
                 }
             }
 
-            /* Dynamic speed control based on sharp turn detection */
-            int16_t current_speed_left  = SPEED_LEFT;
-            int16_t current_speed_right = SPEED_RIGHT;
+            /* Dynamic speed control based on engine state and sharp turn detection */
+            int16_t nominal_speed = g_engine_enabled ? (int16_t)g_motor_speed : 0;
+            int16_t current_speed_left  = nominal_speed;
+            int16_t current_speed_right = nominal_speed;
 
-            if (is_sharp_turn) {
-                current_speed_left  = (int16_t)(SPEED_LEFT * SHARP_TURN_SPEED_COEFF);
-                current_speed_right = (int16_t)(SPEED_RIGHT * SHARP_TURN_SPEED_COEFF);
+            if (is_sharp_turn && g_engine_enabled) {
+                current_speed_left  = (int16_t)((double)nominal_speed * SHARP_TURN_SPEED_COEFF);
+                current_speed_right = (int16_t)((double)nominal_speed * SHARP_TURN_SPEED_COEFF);
             }
 
             HbridgeSpeed(&g_hbridge, current_speed_left, current_speed_right);
+
+            /* Send Telemetry to ESP32 over UART at ~10 Hz rate (every 6 camera frames at 60FPS) */
+            static uint32_t telemetry_tick = 0U;
+            if (++telemetry_tick >= 6U)
+            {
+                telemetry_tick = 0U;
+
+                uint8_t line_cnt = 0U;
+                const char *which_str = "NONE";
+
+                if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present))
+                {
+                    if (det.both_lines_present) {
+                        line_cnt = 2U;
+                        which_str = "BOTH";
+                    } else if (det.left_line_present) {
+                        line_cnt = 1U;
+                        which_str = "LEFT";
+                    } else {
+                        line_cnt = 1U;
+                        which_str = "RIGHT";
+                    }
+                }
+                else
+                {
+                    turn_track_result_t turn_t;
+                    if (detection_detect_turn_track(vectors, num_vectors, &turn_t)) {
+                        line_cnt = 0U;
+                        which_str = turn_t.turn_left ? "TURN_LEFT" : "TURN_RIGHT";
+                    } else {
+                        line_cnt = 0U;
+                        which_str = "NONE";
+                    }
+                }
+
+                int lx0 = 0, ly0 = 0, lx1 = 0, ly1 = 0;
+                int rx0 = 0, ry0 = 0, rx1 = 0, ry1 = 0;
+
+                if (det.left_line_present) {
+                    lx0 = (int)det.left_line.vector.x0;
+                    ly0 = (int)det.left_line.vector.y0;
+                    lx1 = (int)det.left_line.vector.x1;
+                    ly1 = (int)det.left_line.vector.y1;
+                }
+                if (det.right_line_present) {
+                    rx0 = (int)det.right_line.vector.x0;
+                    ry0 = (int)det.right_line.vector.y0;
+                    rx1 = (int)det.right_line.vector.x1;
+                    ry1 = (int)det.right_line.vector.y1;
+                }
+
+                Wifi_SendTelemetry(line_cnt, which_str, num_vectors, 0U, last_steering_angle, lx0, ly0, lx1, ly1, rx0, ry0, rx1, ry1);
+            }
+        } else {
+            SDK_DelayAtLeastUs(16000U, SystemCoreClock);
         }
     }
 }

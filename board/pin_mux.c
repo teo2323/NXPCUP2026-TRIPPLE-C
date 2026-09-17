@@ -14,11 +14,15 @@ mcu_data: ksdk2_0
 processor_version: 25.06.10
 board: FRDM-MCXN947
 pin_labels:
+- {pin_num: P1, pin_signal: PIO4_0/WUU0_IN18/TRIG_IN6/FC2_P0/CT_INP16/SMARTDMA_PIO24/PLU_IN0/SINC0_MCLK3, label: 'P4_0/J8[4]/SJ14[1]', identifier: ESP_OLD;ESP_OLD2}
 - {pin_num: K2, pin_signal: PIO2_6/TRIG_IN4/FC9_P4/SDHC0_D3/SCT0_OUT4/PWM1_A0/FLEXIO0_D14/SMARTDMA_PIO26/FLEXSPI0_B_DATA2/SINC0_MCLK2/SAI0_TX_BCLK, label: 'P2_6/TP24/J12[2]/J3[15]/SJ1[3]',
   identifier: PWM1_A0}
+- {pin_num: P2, pin_signal: PIO4_1/TRIG_IN7/FC2_P1/CT_INP17/SMARTDMA_PIO25/PLU_IN1, label: 'P4_1/J8[3]/SJ15[1]', identifier: ESP_OLD}
 - {pin_num: K3, pin_signal: PIO2_4/WUU0_IN17/FC9_P0/SDHC0_CLK/SCT0_OUT2/PWM1_A1/FLEXIO0_D12/SMARTDMA_PIO24/FLEXSPI0_B_DATA0/SINC0_MCLK1/SAI0_RXD1, label: 'P2_4/TP26/J12[5]/J3[11]/SJ5[3]',
   identifier: PWM1_A1}
 - {pin_num: B6, pin_signal: PIO0_24/FC1_P0/CT0_MAT0/ADC0_B16, label: 'P0_24/SJ7[1]', identifier: GPIO0}
+- {pin_num: D15, pin_signal: PIO3_2/FC7_P0/CT4_MAT0/PWM0_X0/FLEXIO0_D10/SMARTDMA_PIO2/SIM1_PD, label: 'P3_2/J9[20]/J7[8]', identifier: ESP_RX}
+- {pin_num: D16, pin_signal: PIO3_3/FC7_P1/CT4_MAT1/PWM0_X1/FLEXIO0_D11/SMARTDMA_PIO3/SIM1_RST, label: 'P3_3/J9[19]/SJ12[1]', identifier: ESP_TX}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS ***********
  */
 /* clang-format on */
@@ -54,8 +58,10 @@ BOARD_InitPins:
   - {pin_num: A10, peripheral: LP_FLEXCOMM0, signal: LPFLEXCOMM_P1, pin_signal: PIO0_17/FC0_P1/CT0_MAT1/UTICK_CAP3/FLEXIO0_D1/PDM0_DATA0/I3C0_SCL/TSI0_CH12/ADC0_A9}
   - {pin_num: B10, peripheral: LP_FLEXCOMM0, signal: LPFLEXCOMM_P0, pin_signal: PIO0_16/WUU0_IN2/FC0_P0/CT0_MAT0/UTICK_CAP2/FLEXIO0_D0/PDM0_CLK/I3C0_SDA/TSI0_CH11/ADC0_A8}
   - {pin_num: P2, peripheral: LP_FLEXCOMM2, signal: LPFLEXCOMM_P1, pin_signal: PIO4_1/TRIG_IN7/FC2_P1/CT_INP17/SMARTDMA_PIO25/PLU_IN1}
-  - {pin_num: P1, peripheral: LP_FLEXCOMM2, signal: LPFLEXCOMM_P0, pin_signal: PIO4_0/WUU0_IN18/TRIG_IN6/FC2_P0/CT_INP16/SMARTDMA_PIO24/PLU_IN0/SINC0_MCLK3}
+  - {pin_num: P1, peripheral: LP_FLEXCOMM2, signal: LPFLEXCOMM_P0, pin_signal: PIO4_0/WUU0_IN18/TRIG_IN6/FC2_P0/CT_INP16/SMARTDMA_PIO24/PLU_IN0/SINC0_MCLK3, identifier: ESP_OLD2}
   - {pin_num: D2, peripheral: CTIMER2, signal: 'MATCH, 2', pin_signal: PIO1_12/WUU0_IN12/TRACE_CLK/FC4_P4/FC3_P0/CT2_MAT2/SCT0_OUT4/FLEXIO0_D20/SMARTDMA_PIO8/PLU_OUT2/ENET0_RXER/CAN1_RXD/TSI0_CH21/ADC1_A12}
+  - {pin_num: D16, peripheral: LP_FLEXCOMM7, signal: LPFLEXCOMM_P1, pin_signal: PIO3_3/FC7_P1/CT4_MAT1/PWM0_X1/FLEXIO0_D11/SMARTDMA_PIO3/SIM1_RST}
+  - {pin_num: D15, peripheral: LP_FLEXCOMM7, signal: LPFLEXCOMM_P0, pin_signal: PIO3_2/FC7_P0/CT4_MAT0/PWM0_X0/FLEXIO0_D10/SMARTDMA_PIO2/SIM1_PD}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS ***********
  */
 /* clang-format on */
@@ -74,6 +80,8 @@ void BOARD_InitPins(void)
     CLOCK_EnableClock(kCLOCK_Port0);
     /* Enables the clock for PORT1: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port1);
+    /* Enables the clock for PORT3: Enables clock */
+    CLOCK_EnableClock(kCLOCK_Port3);
     /* Enables the clock for PORT4: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port4);
 
@@ -184,8 +192,28 @@ void BOARD_InitPins(void)
                       /* Input Buffer Enable: Enables. */
                       | PORT_PCR_IBE(PCR_IBE_ibe1));
 
+    /* PORT3_2 (pin D15) is configured as FC7_P0 */
+    PORT_SetPinMux(BOARD_INITPINS_ESP_RX_PORT, BOARD_INITPINS_ESP_RX_PIN, kPORT_MuxAlt2);
+
+    PORT3->PCR[2] = ((PORT3->PCR[2] &
+                      /* Mask bits to zero which are setting */
+                      (~(PORT_PCR_IBE_MASK)))
+
+                     /* Input Buffer Enable: Enables. */
+                     | PORT_PCR_IBE(PCR_IBE_ibe1));
+
+    /* PORT3_3 (pin D16) is configured as FC7_P1 */
+    PORT_SetPinMux(BOARD_INITPINS_ESP_TX_PORT, BOARD_INITPINS_ESP_TX_PIN, kPORT_MuxAlt2);
+
+    PORT3->PCR[3] = ((PORT3->PCR[3] &
+                      /* Mask bits to zero which are setting */
+                      (~(PORT_PCR_IBE_MASK)))
+
+                     /* Input Buffer Enable: Enables. */
+                     | PORT_PCR_IBE(PCR_IBE_ibe1));
+
     /* PORT4_0 (pin P1) is configured as FC2_P0 */
-    PORT_SetPinMux(PORT4, 0U, kPORT_MuxAlt2);
+    PORT_SetPinMux(BOARD_INITPINS_ESP_OLD2_PORT, BOARD_INITPINS_ESP_OLD2_PIN, kPORT_MuxAlt2);
 
     PORT4->PCR[0] = ((PORT4->PCR[0] &
                       /* Mask bits to zero which are setting */
@@ -195,7 +223,7 @@ void BOARD_InitPins(void)
                      | PORT_PCR_IBE(PCR_IBE_ibe1));
 
     /* PORT4_1 (pin P2) is configured as FC2_P1 */
-    PORT_SetPinMux(PORT4, 1U, kPORT_MuxAlt2);
+    PORT_SetPinMux(BOARD_INITPINS_ESP_OLD_PORT, BOARD_INITPINS_ESP_OLD_PIN, kPORT_MuxAlt2);
 
     PORT4->PCR[1] = ((PORT4->PCR[1] &
                       /* Mask bits to zero which are setting */
