@@ -49,3 +49,11 @@
 308	1725	8112701730832372	CMakeFiles/nxpcup_official.dir/source/main.o	974c27b386dc18c0
 692	2067	8112701734675673	CMakeFiles/nxpcup_official.dir/source/detection.o	83da7cbf1c711534
 2067	6066	8112701748428240	nxpcup_official.axf	c1e1a8f4c9808926
+4	1476	8114295166293777	CMakeFiles/nxpcup_official.dir/source/simple_movement.o	7ecee8a6b9c32c4
+323	1720	8114295169483641	CMakeFiles/nxpcup_official.dir/source/main.o	974c27b386dc18c0
+623	1947	8114295172492702	CMakeFiles/nxpcup_official.dir/source/detection.o	83da7cbf1c711534
+1948	6002	8114295185733031	nxpcup_official.axf	c1e1a8f4c9808926
+4	1459	8114298522881712	CMakeFiles/nxpcup_official.dir/source/simple_movement.o	7ecee8a6b9c32c4
+346	1741	8114298526295181	CMakeFiles/nxpcup_official.dir/source/main.o	974c27b386dc18c0
+698	2086	8114298529826782	CMakeFiles/nxpcup_official.dir/source/detection.o	83da7cbf1c711534
+2086	6060	8114298543699575	nxpcup_official.axf	c1e1a8f4c9808926
