@@ -130,12 +130,24 @@ int main(void)
                 Steer(last_steering_angle + STEERING_OFFSET);
             }
 
-            /* Differential drive: outer wheel faster, inner wheel slower.
-             * diff > 0 → right turn → left (outer) faster, right (inner) slower.
-             * diff < 0 → left turn  → right (outer) faster, left (inner) slower. */
-            double diff = last_steering_angle * DIFF_SPEED_COEFF;
-            int16_t current_speed_left  = (int16_t)(SPEED_LEFT  + diff);
-            int16_t current_speed_right = (int16_t)(SPEED_RIGHT - diff);
+            /* Differential drive with corner braking:
+             * 1) corner_brake slows BOTH wheels proportionally to turn sharpness
+             * 2) diff splits inner/outer: outer gets a boost, inner brakes harder
+             * Result: outer stays ~80-90 in curves, inner drops aggressively */
+            double abs_angle = fabs(last_steering_angle);
+            double corner_brake = abs_angle * CORNER_BRAKE_COEFF;
+            double diff = abs_angle * DIFF_SPEED_COEFF;
+
+            int16_t current_speed_left, current_speed_right;
+            if (last_steering_angle >= 0) {
+                /* Right turn: left is outer, right is inner */
+                current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake + diff);
+                current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake - diff);
+            } else {
+                /* Left turn: right is outer, left is inner */
+                current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake - diff);
+                current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake + diff);
+            }
 
             HbridgeSpeed(&g_hbridge, current_speed_left, current_speed_right);
         }

@@ -27,12 +27,18 @@
 #define STEERING_OFFSET      13
 
 // Base wheel speeds
-#define SPEED_RIGHT           90
-#define SPEED_LEFT            90
-// Differential drive coefficient: how much speed is split between inner/outer wheels
-// per unit of steering angle. At steer=65 and coeff=0.5: outer=100, inner=~57.
-// Increase toward 0.7 for tighter turns, decrease toward 0.3 if car spins out.
-#define DIFF_SPEED_COEFF       1.40
+#define SPEED_RIGHT           100
+#define SPEED_LEFT            100
+// Corner braking: how much BOTH wheels slow down in curves.
+// Higher = more overall speed reduction in turns.
+#define CORNER_BRAKE_COEFF     1.25
+
+// Differential drive: how much EXTRA the inner wheel brakes vs the outer.
+// Higher = tighter turns (bigger speed gap between wheels).
+// Formula: outer = SPEED - |angle|*CORNER_BRAKE + |angle|*DIFF
+//          inner = SPEED - |angle|*CORNER_BRAKE - |angle|*DIFF
+// Example at angle=20: outer = 90 - 25 + 20 = 85, inner = 90 - 25 - 20 = 45
+#define DIFF_SPEED_COEFF       1.0
 // Sharp turn angle detection threshold in degrees
 #define SHARP_TURN_ANGLE_THRESHOLD 25
 
