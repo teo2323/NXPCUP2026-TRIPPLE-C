@@ -20,12 +20,11 @@
 #define CURVE_ERROR_THRESHOLD      8.5
 
 // Physical steering limits (KEPT FROM bootcampWorkspace)
-#define STEERING_LIMIT_RIGHT  70
+#define STEERING_LIMIT_RIGHT  65
 #define STEERING_LIMIT_LEFT  -65
 
 // Steering angle offset (KEPT FROM bootcampWorkspace)
-#define STEERING_OFFSET      13
-
+#define STEERING_OFFSET      15
 // Base wheel speeds
 #define SPEED_RIGHT           100
 #define SPEED_LEFT            100
@@ -35,12 +34,17 @@
 
 // Differential drive: how much EXTRA the inner wheel brakes vs the outer.
 // Higher = tighter turns (bigger speed gap between wheels).
-// Formula: outer = SPEED - |angle|*CORNER_BRAKE + |angle|*DIFF
+// Formula: outer = SPEED - |angle|*CORNER_BRAKE (corner_brake) + |angle|*DIFF (diff)
 //          inner = SPEED - |angle|*CORNER_BRAKE - |angle|*DIFF
-// Example at angle=20: outer = 90 - 25 + 20 = 85, inner = 90 - 25 - 20 = 45
+// Example at angle=20: outer = 100 - 25 + 20 = 95, inner = 100 - 25 - 20 = 55   
 #define DIFF_SPEED_COEFF       1.0
 // Sharp turn angle detection threshold in degrees
 #define SHARP_TURN_ANGLE_THRESHOLD 25
+
+// Minimum slope (|dy/dx|) for a vector to be classified as vertical.
+// Higher = stricter (only nearly-vertical lines pass).
+// 1.5 means dy must be at least 1.5x dx (~56° from horizontal).
+#define VERTICAL_MIN_SLOPE     0.375
 
 // Decay factor for steering angle when no lines are detected
 #define DECAY_FACTOR          0.95
