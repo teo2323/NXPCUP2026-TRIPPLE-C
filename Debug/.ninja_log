@@ -37,3 +37,7 @@
 12087	13772	8110886568334684	CMakeFiles/nxpcup_official.dir/utilities/str/fsl_str.o	ccfbbe8fe6a7dcdd
 12443	14085	8110886571902235	CMakeFiles/nxpcup_official.dir/utilities/debug_console_lite/fsl_debug_console.o	9557da594ce6c47a
 2397	6311	8118695440828323	nxpcup_official.axf	c1e1a8f4c9808926
+352	1785	8118752141490570	CMakeFiles/nxpcup_official.dir/source/main.o	974c27b386dc18c0
+4	1795	8118752138010875	CMakeFiles/nxpcup_official.dir/source/simple_movement.o	7ecee8a6b9c32c4
+693	2287	8118752144894801	CMakeFiles/nxpcup_official.dir/source/detection.o	83da7cbf1c711534
+2287	6429	8118752160842931	nxpcup_official.axf	c1e1a8f4c9808926
