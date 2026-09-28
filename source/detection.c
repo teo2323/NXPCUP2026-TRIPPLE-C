@@ -6,10 +6,6 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#ifndef SHARP_TURN_ANGLE_THRESHOLD
-#define SHARP_TURN_ANGLE_THRESHOLD 35.0
-#endif
-
 static size_t detection_parse_vectors(const uint16_t *raw_vectors,
                                        size_t num_vectors,
                                        pixy_vector_t *out_vectors,
@@ -45,11 +41,25 @@ static double detection_vector_angle_deg(const pixy_vector_t *vec)
 {
     if (vec == NULL) return 0.0;
 
-    int dx = (int)vec->x1 - (int)vec->x0;
-    int dy = (int)vec->y1 - (int)vec->y0;
+    /* Always orient vector from bottom (near car, higher Y) to top (horizon, lower Y) */
+    double bot_x, bot_y, top_x, top_y;
+    if (vec->y0 >= vec->y1) {
+        bot_x = (double)vec->x0;
+        bot_y = (double)vec->y0;
+        top_x = (double)vec->x1;
+        top_y = (double)vec->y1;
+    } else {
+        bot_x = (double)vec->x1;
+        bot_y = (double)vec->y1;
+        top_x = (double)vec->x0;
+        top_y = (double)vec->y0;
+    }
 
-    if (dy != 0) {
-        return atan2((double)dx, (double)(-dy)) * 180.0 / M_PI;
+    double dx = top_x - bot_x;
+    double dy = bot_y - top_y; /* Positive distance going forward */
+
+    if (dy > 1e-6) {
+        return atan2(dx, dy) * 180.0 / M_PI;
     } else {
         return (dx >= 0) ? 90.0 : -90.0;
     }
@@ -255,11 +265,12 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
     if (has_right) result->right_line = *right;
 
     if (has_left && has_right) {
-        /* CASE 1: Both lines detected -> Track Centerline */
+        /* CASE 1: Both lines detected -> Track Centerline & Mean angle */
         result->track_width    = right->bottom_x - left->bottom_x;
         result->track_center_x = (left->bottom_x + right->bottom_x) / 2.0;
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
         result->avg_slope      = (left->inverse_slope + right->inverse_slope) / 2.0;
+        result->curve_angle    = (left->angle_deg + right->angle_deg) / 2.0;
 
         /* Combined steering: inverse slope heading (-25x) + center offset correction (0.8x) */
         result->steering_angle = (-25.0 * result->avg_slope) + (result->center_offset * 0.8);
@@ -270,6 +281,8 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = right->inverse_slope;
+        /* Right line tilts inward (negative) on straights; add offset to cancel perspective convergence */
+        result->curve_angle    = right->angle_deg + PERSPECTIVE_ANGLE_OFFSET;
 
         result->steering_angle = (-25.0 * result->avg_slope) + (result->center_offset * 0.8);
     }
@@ -279,6 +292,8 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = left->inverse_slope;
+        /* Left line tilts inward (positive) on straights; subtract offset to cancel perspective convergence */
+        result->curve_angle    = left->angle_deg - PERSPECTIVE_ANGLE_OFFSET;
 
         result->steering_angle = (-25.0 * result->avg_slope) + (result->center_offset * 0.8);
     }
@@ -288,6 +303,7 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
         result->center_offset  = 0.0;
         result->track_width    = 0.0;
         result->avg_slope      = 0.0;
+        result->curve_angle    = 0.0;
         result->steering_angle = 0.0;
     }
 }
@@ -306,10 +322,9 @@ void detection_process_dual_lines(const uint16_t *raw_vectors,
     result->center_offset         = 0.0;
     result->track_width           = 0.0;
     result->steering_angle        = 0.0;
+    result->curve_angle           = 0.0;
     result->avg_slope             = 0.0;
     result->valid_vectors         = 0;
-    result->intersection_detected = false;
-    result->sharp_turn_detected   = false;
 
     if (raw_vectors == NULL || num_vectors == 0) return;
 
@@ -336,17 +351,6 @@ void detection_process_dual_lines(const uint16_t *raw_vectors,
     detection_calculate_dual_line_steering(&left_line, &right_line,
                                             DUAL_LINE_HALF_TRACK_DEFAULT,
                                             result);
-
-    if (left_line.detected && right_line.detected) {
-        if (fabs(left_line.angle_deg - right_line.angle_deg) > 35.0) {
-            result->intersection_detected = true;
-        }
-    }
-
-    if ((left_line.detected && fabs(left_line.angle_deg) > SHARP_TURN_ANGLE_THRESHOLD) ||
-        (right_line.detected && fabs(right_line.angle_deg) > SHARP_TURN_ANGLE_THRESHOLD)) {
-        result->sharp_turn_detected = true;
-    }
 }
 
 bool detection_detect_turn_track(const uint16_t *raw_vectors,
