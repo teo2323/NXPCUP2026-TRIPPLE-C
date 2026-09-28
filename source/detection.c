@@ -75,10 +75,20 @@ static size_t detection_filter_vertical(const pixy_vector_t *in,
 
     size_t count = 0;
     for (size_t i = 0; i < in_count; i++) {
+        double diff_x = (double)in[i].x1 - (double)in[i].x0;
         double diff_y = (double)in[i].y0 - (double)in[i].y1;
-        if (fabs(diff_y) >= min_dy_pixels) {
-            out[count++] = in[i];
+
+        /* Must have enough vertical span */
+        if (fabs(diff_y) < min_dy_pixels) continue;
+
+        /* Slope check: |dy/dx| must exceed VERTICAL_MIN_SLOPE.
+         * If dx is ~0 the line is perfectly vertical -> always accept. */
+        if (fabs(diff_x) > 1e-6) {
+            double slope = fabs(diff_y) / fabs(diff_x);
+            if (slope < VERTICAL_MIN_SLOPE) continue;
         }
+
+        out[count++] = in[i];
     }
     return count;
 }

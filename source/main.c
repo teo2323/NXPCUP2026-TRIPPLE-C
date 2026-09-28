@@ -107,36 +107,46 @@ int main(void)
                 Steer(steer_angle + STEERING_OFFSET);
                 last_steering_angle = steer_angle;
             }
+            // else {
+            //     /* 0 track lines detected -> search for horizontal turn-track fallback vector */
+            //     turn_track_result_t turn;
+            //     if (detection_detect_turn_track(vectors, num_vectors, &turn)) {
+            //         /* Horizontal fallback vector indicates a sharp turn in progress */
+            //         is_sharp_turn = true;
+
+            //         /* 2-Zone Variable PID steering control */
+            //         double steer_angle = compute_variable_pid(turn.steering_angle, &previous_error, is_sharp_turn);
+
+            //         Steer(steer_angle + STEERING_OFFSET);
+            //         last_steering_angle = steer_angle;
+            //     }
+            // }
             else {
-                /* 0 track lines detected -> search for horizontal turn-track fallback vector */
-                turn_track_result_t turn;
-                if (detection_detect_turn_track(vectors, num_vectors, &turn)) {
-                    /* Horizontal fallback vector indicates a sharp turn in progress */
-                    is_sharp_turn = true;
-
-                    /* 2-Zone Variable PID steering control */
-                    double steer_angle = compute_variable_pid(turn.steering_angle, &previous_error, is_sharp_turn);
-
-                    Steer(steer_angle + STEERING_OFFSET);
-                    last_steering_angle = steer_angle;
+                /* No vectors detected -> gently decay angle using DECAY_FACTOR (0.9) */
+                last_steering_angle *= DECAY_FACTOR;
+                if (fabs(last_steering_angle) < 1.0) {
+                    last_steering_angle = 0.0;
                 }
-                else {
-                    /* No vectors detected -> gently decay angle using DECAY_FACTOR (0.9) */
-                    last_steering_angle *= DECAY_FACTOR;
-                    if (fabs(last_steering_angle) < 1.0) {
-                        last_steering_angle = 0.0;
-                    }
-                    Steer(last_steering_angle + STEERING_OFFSET);
-                }
+                Steer(last_steering_angle + STEERING_OFFSET);
             }
 
-            /* Dynamic speed control based on sharp turn detection */
-            int16_t current_speed_left  = SPEED_LEFT;
-            int16_t current_speed_right = SPEED_RIGHT;
+            /* Differential drive with corner braking:
+             * 1) corner_brake slows BOTH wheels proportionally to turn sharpness
+             * 2) diff splits inner/outer: outer gets a boost, inner brakes harder
+             * Result: outer stays ~80-90 in curves, inner drops aggressively */
+            double abs_angle = fabs(last_steering_angle);
+            double corner_brake = abs_angle * CORNER_BRAKE_COEFF;
+            double diff = abs_angle * DIFF_SPEED_COEFF;
 
-            if (is_sharp_turn) {
-                current_speed_left  = (int16_t)(SPEED_LEFT * SHARP_TURN_SPEED_COEFF);
-                current_speed_right = (int16_t)(SPEED_RIGHT * SHARP_TURN_SPEED_COEFF);
+            int16_t current_speed_left, current_speed_right;
+            if (last_steering_angle >= 0) {
+                /* Right turn: left is outer, right is inner */
+                current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake + diff);
+                current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake - diff);
+            } else {
+                /* Left turn: right is outer, left is inner */
+                current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake - diff);
+                current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake + diff);
             }
 
             HbridgeSpeed(&g_hbridge, current_speed_left, current_speed_right);
