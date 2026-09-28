@@ -9,10 +9,10 @@
       "displayName": "Debug-env",
       "hidden": true,
       "environment": {
-        "ARMGCC_DIR": "C:/Users/Teo/.mcuxpressotools/arm-gnu-toolchain-14.2.rel1-mingw-w64-x86_64-arm-none-eabi",
+        "ARMGCC_DIR": "$penv{USERPROFILE}/.mcuxpressotools/arm-gnu-toolchain-14.2.rel1-mingw-w64-x86_64-arm-none-eabi",
         "SdkRootDirPath": "",
-        "POSTPROCESS_UTILITY": "C:/Users/Teo/.mcuxpressotools/mcux-fixelf-14.2.2/mcux-fixelf.exe",
-        "MCUX_VENV_PATH": "C:/Users/Teo/.mcuxpressotools/.mcux-venv-3.12/Scripts",
+        "POSTPROCESS_UTILITY": "$penv{USERPROFILE}/.mcuxpressotools/mcux-fixelf-14.2.2/mcux-fixelf.exe",
+        "MCUX_VENV_PATH": "$penv{USERPROFILE}/.mcuxpressotools/.mcux-venv-3.12/Scripts",
         "PATH": "$env{MCUX_VENV_PATH}${pathListSep}$penv{PATH}",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       },

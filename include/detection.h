@@ -61,11 +61,9 @@ typedef struct {
     double        track_width;           /**< Measured track width in pixels */
     
     double        steering_angle;        /**< Final recommended steering angle/slope */
+    double        curve_angle;           /**< Detected track line angle (mean if both, or single line angle) */
     double        avg_slope;             /**< Effective centerline slope */
     size_t        valid_vectors;         /**< Total valid vectors processed */
-    
-    bool          intersection_detected; /**< True if an intersection/fork was detected */
-    bool          sharp_turn_detected;   /**< True if a sharp turn was detected */
 } dual_line_detection_result_t;
 
 /**

@@ -2,22 +2,25 @@
 #define CONFIG_H
 
 // 2-Zone Variable Steering PID control coefficients
-// Zone 1: Straight line (|error| <= CURVE_ERROR_THRESHOLD)
-//#define STEERING_KP_STRAIGHT       1.5
-//#define STEERING_KD_STRAIGHT       0.9
+// Zone 1: Straight line
+#define STEERING_KP_STRAIGHT       1
+#define STEERING_KD_STRAIGHT       10
 
-// Zone 2: Curve / Sharp turn (|error| > CURVE_ERROR_THRESHOLD or sharp turn)
-//#define STEERING_KP_CURVE          4.0
-//#define STEERING_KD_CURVE          1.7
+// Zone 2: Curve (driven by CURVE PID)
+#define STEERING_KP_CURVE          2.0
+#define STEERING_KD_CURVE          2.0
 
-#define STEERING_KP_STRAIGHT       2.0
-#define STEERING_KD_STRAIGHT       2.0
+// Dual Steering Error Deadbands
+#define STEERING_DEADBAND_STRAIGHT   2.5   // Wide deadband: stops straight-line servo chatter (deg)
+#define STEERING_DEADBAND_CURVE      1.0   // Narrow deadband: high precision along the arc (deg)
 
-#define STEERING_KP_CURVE          STEERING_KP_STRAIGHT
-#define STEERING_KD_CURVE          STEERING_KD_STRAIGHT
+// Track line angle hysteresis thresholds in degrees for transitioning between Straight and Curve zone
+#define CURVE_ENTER_ANGLE_DEG      35
+#define CURVE_EXIT_ANGLE_DEG       5 // good values = 10;
+#define CURVE_EXIT_FRAMES          2     // Consecutive frames below EXIT threshold required to return to straight
 
-// Error threshold in degrees to transition between Straight and Curve zone
-#define CURVE_ERROR_THRESHOLD      8.5
+// Camera perspective convergence offset in degrees for single-line angle compensation
+#define PERSPECTIVE_ANGLE_OFFSET   5.0   // Inward tilt caused by camera vanishing point perspective
 
 // Physical steering limits (KEPT FROM bootcampWorkspace)
 #define STEERING_LIMIT_RIGHT  65
@@ -30,16 +33,13 @@
 #define SPEED_LEFT            100
 // Corner braking: how much BOTH wheels slow down in curves.
 // Higher = more overall speed reduction in turns.
-#define CORNER_BRAKE_COEFF     1.25
+#define CORNER_BRAKE_COEFF     1.50
 
 // Differential drive: how much EXTRA the inner wheel brakes vs the outer.
-// Higher = tighter turns (bigger speed gap between wheels).
-// Formula: outer = SPEED - |angle|*CORNER_BRAKE (corner_brake) + |angle|*DIFF (diff)
+// Formula: outer = SPEED - |angle|*CORNER_BRAKE + |angle|*DIFF
 //          inner = SPEED - |angle|*CORNER_BRAKE - |angle|*DIFF
-// Example at angle=20: outer = 100 - 25 + 20 = 95, inner = 100 - 25 - 20 = 55   
-#define DIFF_SPEED_COEFF       1.0
-// Sharp turn angle detection threshold in degrees
-#define SHARP_TURN_ANGLE_THRESHOLD 25
+#define DIFF_SPEED_COEFF       0.38
+
 
 // Minimum slope (|dy/dx|) for a vector to be classified as vertical.
 // Higher = stricter (only nearly-vertical lines pass).
@@ -47,6 +47,9 @@
 #define VERTICAL_MIN_SLOPE     0.375
 
 // Decay factor for steering angle when no lines are detected
-#define DECAY_FACTOR          0.95
+#define DECAY_FACTOR          0.5
+
+// Maximum consecutive frames with no detected track lines before stopping the motors (5 frames)
+#define NO_LINE_MAX_LOST_FRAMES 5U
 
 #endif

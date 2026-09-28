@@ -1,2 +1,5 @@
-D:/Facultate/FACULTATE/an2/sem2/robotica/NXPCUP2026-TRIPPLE-C/source/main.c:19:22:compute_variable_pid	64	static
-D:/Facultate/FACULTATE/an2/sem2/robotica/NXPCUP2026-TRIPPLE-C/source/main.c:44:5:main	512	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/CMSIS/core_cm33.h:2555:22:__NVIC_SetPriority	16	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/CMSIS/core_cm33.h:3108:26:SysTick_Config	16	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/main.c:21:6:SysTick_Handler	4	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/main.c:26:22:compute_variable_pid	104	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/main.c:89:5:main	528	static
