@@ -1,5 +1,4 @@
 E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/CMSIS/core_cm33.h:2555:22:__NVIC_SetPriority	16	static
 E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/CMSIS/core_cm33.h:3108:26:SysTick_Config	16	static
 E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/main.c:21:6:SysTick_Handler	4	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/main.c:26:22:compute_variable_pid	104	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/main.c:89:5:main	528	static
+E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/source/main.c:89:5:main	304	static

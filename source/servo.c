@@ -21,15 +21,18 @@ void Steer(double angle)
     //          where the pulse starts, so use (100.0 - duty)
     uint32_t pulseTicks =periodTicks * ((100-duty)/100) ;
 
-    // 5. TODO: write the result to the servo channel match register
-    CTIMER2_PERIPHERAL->MR[2] = pulseTicks;
+    // 5. Write the result to the servo channel match register:
+    // Match 1 controls CT2_MAT1 on PIO3_19 (connected to Shield J17 header)
+    CTIMER2_PERIPHERAL->MR[CTIMER2_PWM_1_CHANNEL] = pulseTicks;
+    // Also write to Match 2 for backwards compatibility with J13 header
+    CTIMER2_PERIPHERAL->MR[CTIMER2_PWM_2_CHANNEL] = pulseTicks;
 }
 
 void TestServo(){
 	volatile int Delay;
 	volatile int SteerStrength;
 	while(1){
-		for(SteerStrength = -100; SteerStrength <=100; SteerStrength++){
+		for(SteerStrength = -50; SteerStrength <=50; SteerStrength++){
 			Delay = 200000;
 			while(Delay){
 				Delay--;

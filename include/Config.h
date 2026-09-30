@@ -33,7 +33,7 @@
 #define SPEED_LEFT            100
 // Corner braking: how much BOTH wheels slow down in curves.
 // Higher = more overall speed reduction in turns.
-#define CORNER_BRAKE_COEFF     1.50
+#define CORNER_BRAKE_COEFF     1.7
 
 // Differential drive: how much EXTRA the inner wheel brakes vs the outer.
 // Formula: outer = SPEED - |angle|*CORNER_BRAKE + |angle|*DIFF

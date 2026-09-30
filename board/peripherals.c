@@ -478,7 +478,9 @@ const ctimer_config_t CTIMER2_config = {
 static void CTIMER2_init(void) {
   /* CTIMER2 peripheral initialization */
   CTIMER_Init(CTIMER2_PERIPHERAL, &CTIMER2_config);
-  /* PWM channel 2 of CTIMER2 peripheral initialization */
+  /* PWM channel 1 of CTIMER2 peripheral initialization (Servo on J17 header) */
+  CTIMER_SetupPwmPeriod(CTIMER2_PERIPHERAL, CTIMER2_PWM_PERIOD_CH, CTIMER2_PWM_1_CHANNEL, CTIMER2_PWM_PERIOD, CTIMER2_PWM_1_DUTY, false);
+  /* PWM channel 2 of CTIMER2 peripheral initialization (Servo on J13 header) */
   CTIMER_SetupPwmPeriod(CTIMER2_PERIPHERAL, CTIMER2_PWM_PERIOD_CH, CTIMER2_PWM_2_CHANNEL, CTIMER2_PWM_PERIOD, CTIMER2_PWM_2_DUTY, false);
   /* Start the timer */
   CTIMER_StartTimer(CTIMER2_PERIPHERAL);

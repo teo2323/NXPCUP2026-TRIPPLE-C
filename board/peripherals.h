@@ -117,7 +117,11 @@ extern "C" {
 #define CTIMER2_PWM_PERIOD_CH kCTIMER_Match_0
 /* Definition of PWM period */
 #define CTIMER2_PWM_PERIOD 2999999
-/* Definition of channel 2 ID */
+/* Definition of channel 1 ID (Servo on J17 header) */
+#define CTIMER2_PWM_1_CHANNEL kCTIMER_Match_1
+/* Definition of channel 1 duty */
+#define CTIMER2_PWM_1_DUTY 2775000
+/* Definition of channel 2 ID (Servo on J13 header) */
 #define CTIMER2_PWM_2_CHANNEL kCTIMER_Match_2
 /* Definition of channel 2 duty */
 #define CTIMER2_PWM_2_DUTY 2775000

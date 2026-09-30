@@ -74,6 +74,8 @@ void BOARD_InitPins(void)
     CLOCK_EnableClock(kCLOCK_Port0);
     /* Enables the clock for PORT1: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port1);
+    /* Enables the clock for PORT3: Enables clock */
+    CLOCK_EnableClock(kCLOCK_Port3);
     /* Enables the clock for PORT4: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port4);
 
@@ -178,6 +180,16 @@ void BOARD_InitPins(void)
     PORT_SetPinMux(PORT1, 12U, kPORT_MuxAlt4);
 
     PORT1->PCR[12] = ((PORT1->PCR[12] &
+                       /* Mask bits to zero which are setting */
+                       (~(PORT_PCR_IBE_MASK)))
+
+                      /* Input Buffer Enable: Enables. */
+                      | PORT_PCR_IBE(PCR_IBE_ibe1));
+
+    /* PORT3_19 (pin K17) is configured as CT2_MAT1 (Servo on J17 header) */
+    PORT_SetPinMux(PORT3, 19U, kPORT_MuxAlt4);
+
+    PORT3->PCR[19] = ((PORT3->PCR[19] &
                        /* Mask bits to zero which are setting */
                        (~(PORT_PCR_IBE_MASK)))
 
