@@ -5,32 +5,40 @@
 
 static volatile bool transferDone;
 
+static volatile status_t last_transfer_status;
+
 static void pixy_edma_cb(LPI2C_Type *base,
                          lpi2c_master_edma_handle_t *handle,
                          status_t status,
                          void *userData)
 {
     (void)base; (void)handle; (void)userData;
-    if (status == kStatus_Success) {
-        transferDone = true;
-    }
+    last_transfer_status = status;
+    transferDone = true;
+}
+
+void pixy_init_bus(LPI2C_Type *inst,
+                   lpi2c_master_edma_handle_t *sharedHandle,
+                   edma_handle_t *rxHandle,
+                   edma_handle_t *txHandle)
+{
+    LPI2C_MasterCreateEDMAHandle(
+        inst,
+        sharedHandle,
+        rxHandle,
+        txHandle,
+        pixy_edma_cb,
+        NULL);
 }
 
 void pixy_init(pixy_t *cam,
                LPI2C_Type *inst,
                uint8_t addr,
-               edma_handle_t *rxHandle,
-               edma_handle_t *txHandle)
+               lpi2c_master_edma_handle_t *sharedHandle)
 {
     cam->instance = inst;
     cam->address  = addr;
-    LPI2C_MasterCreateEDMAHandle(
-        cam->instance,
-        &cam->edmaHandle,
-        rxHandle,
-        txHandle,
-        pixy_edma_cb,
-        NULL);
+    cam->edmaHandle = sharedHandle;
 }
 
 static status_t pixy_send(pixy_t *cam, const uint8_t *cmd, size_t len)
@@ -44,7 +52,7 @@ static status_t pixy_send(pixy_t *cam, const uint8_t *cmd, size_t len)
         .dataSize       = len,
         .flags          = kLPI2C_TransferDefaultFlag,
     };
-    status_t s = LPI2C_MasterTransferEDMA(cam->instance, &cam->edmaHandle, &xfer);
+    status_t s = LPI2C_MasterTransferEDMA(cam->instance, cam->edmaHandle, &xfer);
     if (s != kStatus_Success) return s;
     while (!transferDone) {}
     return kStatus_Success;
@@ -61,7 +69,7 @@ static status_t pixy_recv(pixy_t *cam, uint8_t *buf, size_t len)
         .dataSize       = len,
         .flags          = kLPI2C_TransferDefaultFlag,
     };
-    status_t s = LPI2C_MasterTransferEDMA(cam->instance, &cam->edmaHandle, &xfer);
+    status_t s = LPI2C_MasterTransferEDMA(cam->instance, cam->edmaHandle, &xfer);
     if (s != kStatus_Success) return s;
     while (!transferDone) {}
     return kStatus_Success;

@@ -15,9 +15,15 @@
 #define STEERING_DEADBAND_CURVE      1.0   // Narrow deadband: high precision along the arc (deg)
 
 // Track line angle hysteresis thresholds in degrees for transitioning between Straight and Curve zone
-#define CURVE_ENTER_ANGLE_DEG      35
+#define CURVE_ENTER_ANGLE_DEG          15     // good values = 20;E_DEG      15
 #define CURVE_EXIT_ANGLE_DEG       5 // good values = 10;
 #define CURVE_EXIT_FRAMES          2     // Consecutive frames below EXIT threshold required to return to straight
+
+// Camera 2 Look-Ahead & Racing Line parameters
+#define ANTICIPATION_ENTER_ANGLE_DEG 15.0  // Threshold for cam2 to detect an approaching curve
+#define RACING_LINE_OFFSET_PX        15.0  // Pixels to offset from center to stay near the outer line
+#define PRE_CURVE_SPEED              70    // Speed to drop to when curve is anticipated
+
 
 // Camera perspective convergence offset in degrees for single-line angle compensation
 #define PERSPECTIVE_ANGLE_OFFSET   5.0   // Inward tilt caused by camera vanishing point perspective

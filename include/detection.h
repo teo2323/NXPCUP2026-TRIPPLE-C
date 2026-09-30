@@ -84,6 +84,7 @@ typedef struct {
  */
 void detection_process_dual_lines(const uint16_t *raw_vectors,
                                   size_t num_vectors,
+                                  double target_center_offset,
                                   dual_line_detection_result_t *result);
 
 /**

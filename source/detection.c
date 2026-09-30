@@ -250,6 +250,7 @@ static bool detection_extract_right_line_track(const pixy_vector_t *vectors,
 static void detection_calculate_dual_line_steering(const line_track_t *left,
                                                      const line_track_t *right,
                                                      double half_track_width,
+                                                     double target_center_offset,
                                                      dual_line_detection_result_t *result)
 {
     if (result == NULL) return;
@@ -264,11 +265,13 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
     if (has_left)  result->left_line  = *left;
     if (has_right) result->right_line = *right;
 
+    double ideal_center = (double)PIXY_FRAME_CENTER_X + target_center_offset;
+
     if (has_left && has_right) {
         /* CASE 1: Both lines detected -> Track Centerline & Mean angle */
         result->track_width    = right->bottom_x - left->bottom_x;
         result->track_center_x = (left->bottom_x + right->bottom_x) / 2.0;
-        result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
+        result->center_offset  = result->track_center_x - ideal_center;
         result->avg_slope      = (left->inverse_slope + right->inverse_slope) / 2.0;
         result->curve_angle    = (left->angle_deg + right->angle_deg) / 2.0;
 
@@ -278,7 +281,7 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
     else if (!has_left && has_right) {
         /* CASE 2: Left line MISSING -> virtual center = right_x - half_track_width */
         result->track_center_x = right->bottom_x - half_track_width;
-        result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
+        result->center_offset  = result->track_center_x - ideal_center;
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = right->inverse_slope;
         /* Right line tilts inward (negative) on straights; add offset to cancel perspective convergence */
@@ -289,7 +292,7 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
     else if (has_left && !has_right) {
         /* CASE 3: Right line MISSING -> virtual center = left_x + half_track_width */
         result->track_center_x = left->bottom_x + half_track_width;
-        result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
+        result->center_offset  = result->track_center_x - ideal_center;
         result->track_width    = 2.0 * half_track_width;
         result->avg_slope      = left->inverse_slope;
         /* Left line tilts inward (positive) on straights; subtract offset to cancel perspective convergence */
@@ -299,7 +302,7 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
     }
     else {
         /* CASE 4: Neither line detected */
-        result->track_center_x = PIXY_FRAME_CENTER_X;
+        result->track_center_x = ideal_center;
         result->center_offset  = 0.0;
         result->track_width    = 0.0;
         result->avg_slope      = 0.0;
@@ -310,6 +313,7 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
 
 void detection_process_dual_lines(const uint16_t *raw_vectors,
                                   size_t num_vectors,
+                                  double target_center_offset,
                                   dual_line_detection_result_t *result)
 {
     if (result == NULL) return;
@@ -318,7 +322,7 @@ void detection_process_dual_lines(const uint16_t *raw_vectors,
     result->both_lines_present    = false;
     result->left_line_present     = false;
     result->right_line_present    = false;
-    result->track_center_x        = PIXY_FRAME_CENTER_X;
+    result->track_center_x        = (double)PIXY_FRAME_CENTER_X + target_center_offset;
     result->center_offset         = 0.0;
     result->track_width           = 0.0;
     result->steering_angle        = 0.0;
@@ -350,6 +354,7 @@ void detection_process_dual_lines(const uint16_t *raw_vectors,
 
     detection_calculate_dual_line_steering(&left_line, &right_line,
                                             DUAL_LINE_HALF_TRACK_DEFAULT,
+                                            target_center_offset,
                                             result);
 }
 

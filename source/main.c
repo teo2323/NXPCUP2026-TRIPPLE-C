@@ -17,6 +17,7 @@
 #define MAX_VECTORS 10
 
 volatile uint32_t g_systick_ms = 0;
+lpi2c_master_edma_handle_t g_lpi2c2_edma_handle;
 
 void SysTick_Handler(void)
 {
@@ -90,6 +91,8 @@ int main(void)
 {
     uint16_t vectors[MAX_VECTORS * 4];
     size_t   num_vectors;
+    uint16_t vectors2[MAX_VECTORS * 4];
+    size_t   num_vectors2;
 
     BOARD_InitHardware();
     BOARD_InitBootPins();
@@ -107,9 +110,17 @@ int main(void)
                 GPIO0, 24U,
                 GPIO0, 27U);
 
+    /* Initialize the I2C EDMA bus once for both cameras */
+    pixy_init_bus(LPI2C2, &g_lpi2c2_edma_handle, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
+
     pixy_t cam1;
-    pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
-    pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active mode
+    pixy_init(&cam1, LPI2C2, 0x54U, &g_lpi2c2_edma_handle);
+    pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active mode   
+
+    pixy_t cam2;
+    pixy_init(&cam2, LPI2C2, 0x55U, &g_lpi2c2_edma_handle);
+    pixy_set_led(&cam2, 0, 0, 255); // Blue LED indicates active mode pt a doua camera
+
 
     /* Initial base drive speed and straight steering */
     HbridgeSpeed(&g_hbridge, SPEED_LEFT, SPEED_RIGHT);
@@ -118,16 +129,54 @@ int main(void)
     double   last_steering_angle   = 0.0;
     double   previous_error        = 0.0;   // D term: stores last frame's error
     bool     is_in_curve           = false; // Hysteresis state: true if in curve zone
+    bool     approaching_curve     = false; // State flag: true if cam2 anticipates a curve
+    double   desired_target_offset = 0.0;   // Racing line offset goal
+    double   current_target_offset = 0.0;   // Smoothed offset applied to camera
     uint8_t  straight_frames       = 0;     // Counter for consecutive frames below exit threshold
     uint8_t  no_line_lost_frames   = 0;     // Counter for consecutive frames with no detected track lines
     bool     motors_stopped        = false; // State flag: true when no lines detected for > NO_LINE_MAX_LOST_FRAMES frames
 
     while (1)
     {
+        /* Camera 2: Look-ahead for anticipation and racing line */
+        if (pixy_get_vectors(&cam2, vectors2, MAX_VECTORS, &num_vectors2) == kStatus_Success) {
+            dual_line_detection_result_t det2;
+            // Target offset is 0 for cam2 since it's just looking for the raw curve angle
+            detection_process_dual_lines(vectors2, num_vectors2, 0.0, &det2);
+
+            if (det2.valid_vectors > 0) {
+                if (det2.curve_angle > ANTICIPATION_ENTER_ANGLE_DEG) {
+                    approaching_curve = true;
+                    // Right curve (curve_angle > 0) -> Car should move LEFT (exterior) -> Steer Left
+                    // To steer left, center_offset must be negative. 
+                    // center_offset = track_x - ideal_center. So ideal_center > track_x.
+                    // ideal_center = 39 + target_offset. So target_offset must be POSITIVE.
+                    desired_target_offset = RACING_LINE_OFFSET_PX;
+                } else if (det2.curve_angle < -ANTICIPATION_ENTER_ANGLE_DEG) {
+                    approaching_curve = true;
+                    // Left curve (curve_angle < 0) -> Car should move RIGHT (exterior) -> Steer Right
+                    // To steer right, center_offset must be positive.
+                    // center_offset = track_x - ideal_center. So ideal_center < track_x.
+                    // ideal_center = 39 + target_offset. So target_offset must be NEGATIVE.
+                    desired_target_offset = -RACING_LINE_OFFSET_PX;
+                } else if (fabs(det2.curve_angle) < (ANTICIPATION_ENTER_ANGLE_DEG - 5.0)) { 
+                    // simple hysteresis
+                    approaching_curve = false;
+                    desired_target_offset = 0.0;
+                }
+            } else {
+                approaching_curve = false;
+                desired_target_offset = 0.0;
+            }
+        }
+
+        /* Smooth the transition to prevent derivative spike in PID */
+        current_target_offset += (desired_target_offset - current_target_offset) * 0.1;
+
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
 
             dual_line_detection_result_t det;
-            detection_process_dual_lines(vectors, num_vectors, &det);
+            detection_process_dual_lines(vectors, num_vectors, current_target_offset, &det);
 
             /* Display line detection status and coordinates */
             if (det.left_line_present) {
@@ -198,25 +247,38 @@ int main(void)
                 int16_t current_speed_left, current_speed_right;
 
                 if (is_in_curve) {
-                    /* Differential drive with corner braking (applied only in curve):
-                     * 1) corner_brake slows BOTH wheels proportionally to turn sharpness
-                     * 2) diff splits inner/outer: outer gets a boost, inner brakes harder
-                     * Result: outer stays ~80-90 in curves, inner drops aggressively */
                     double abs_angle    = fabs(last_steering_angle);
                     double corner_brake = abs_angle * CORNER_BRAKE_COEFF;
-                    double diff         = abs_angle * DIFF_SPEED_COEFF;
-
-                    if (last_steering_angle >= 0.0) {
-                        /* Right turn: left is outer, right is inner */
-                        current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake + diff);
-                        current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake - diff);
+                    
+                    if (approaching_curve) {
+                        /* Anticipated curve: Racing Line approach, symmetrical braking, no drift */
+                        current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake);
+                        current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake);
                     } else {
-                        /* Left turn: right is outer, left is inner */
-                        current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake - diff);
-                        current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake + diff);
+                        /* Unanticipated curve: Fallback to aggressive differential drift */
+                        double diff = abs_angle * DIFF_SPEED_COEFF;
+
+                        if (last_steering_angle >= 0.0) {
+                            /* Right turn: left is outer, right is inner */
+                            current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake + diff);
+                            current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake - diff);
+                        } else {
+                            /* Left turn: right is outer, left is inner */
+                            current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake - diff);
+                            current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake + diff);
+                        }
                     }
+
+                    /* Prevent motor stalling in sharp curves by enforcing a minimum speed */
+                    int16_t min_speed = 30; // 30% duty cycle is usually enough to overcome static friction
+                    if (current_speed_left < min_speed) current_speed_left = min_speed;
+                    if (current_speed_right < min_speed) current_speed_right = min_speed;
+                } else if (approaching_curve) {
+                    /* Straight section but curve anticipated: slow down symmetrically */
+                    current_speed_left  = PRE_CURVE_SPEED;
+                    current_speed_right = PRE_CURVE_SPEED;
                 } else {
-                    /* Straight section: maintain full symmetric base speed with no differential */
+                    /* Straight section: maintain full symmetric base speed */
                     current_speed_left  = SPEED_LEFT;
                     current_speed_right = SPEED_RIGHT;
                 }
