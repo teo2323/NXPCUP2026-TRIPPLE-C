@@ -10,87 +10,102 @@
 #include <stdlib.h>
 #include <math.h>
 
-#define RX_BUF_SIZE 128
+/* ========================================================================= */
+/* Global Parameter Definitions (Initialized to Config.h Defaults)           */
+/* ========================================================================= */
 
-// Definition of global PID parameters initialized with default values
-volatile double g_steering_kp_straight   = DEFAULT_STEERING_KP_STRAIGHT;
-volatile double g_steering_kd_straight   = DEFAULT_STEERING_KD_STRAIGHT;
-volatile double g_steering_kp_curve      = DEFAULT_STEERING_KP_CURVE;
-volatile double g_steering_kd_curve      = DEFAULT_STEERING_KD_CURVE;
-volatile double g_curve_error_threshold  = DEFAULT_CURVE_ERROR_THRESHOLD;
+// Steering 2-Zone PID coefficients
+volatile double g_steering_kp_straight        = DEFAULT_STEERING_KP_STRAIGHT;
+volatile double g_steering_kd_straight        = DEFAULT_STEERING_KD_STRAIGHT;
+volatile double g_steering_kp_curve           = DEFAULT_STEERING_KP_CURVE;
+volatile double g_steering_kd_curve           = DEFAULT_STEERING_KD_CURVE;
+volatile double g_curve_error_threshold       = DEFAULT_CURVE_ERROR_THRESHOLD;
 
-// Motor speed and engine state variables
-volatile double g_motor_speed            = DEFAULT_MOTOR_SPEED;
-volatile bool   g_engine_enabled         = false;
-volatile double g_decay_factor           = DEFAULT_DECAY_FACTOR;
-volatile double g_sharp_turn_speed_coeff = DEFAULT_SHARP_TURN_SPEED_COEFF;
+// Steering limits and geometry offset
+volatile double g_steering_limit_right        = DEFAULT_STEERING_LIMIT_RIGHT;
+volatile double g_steering_limit_left         = DEFAULT_STEERING_LIMIT_LEFT;
+volatile double g_steering_offset             = DEFAULT_STEERING_OFFSET;
 
-/* Dual-duplex communication test diagnostics */
-volatile uint32_t g_wifi_tx_count = 0;
-volatile uint32_t g_wifi_rx_count = 0;
-volatile uint32_t g_wifi_last_pong_seq = 0;
+// Motor speeds and dynamics
+volatile double g_motor_speed                 = DEFAULT_MOTOR_SPEED;
+volatile double g_sharp_turn_speed_coeff      = DEFAULT_SHARP_TURN_SPEED_COEFF;
+volatile double g_speed_left                  = DEFAULT_SPEED_LEFT;
+volatile double g_speed_right                 = DEFAULT_SPEED_RIGHT;
+
+// Track detection and decay thresholds
+volatile double g_sharp_turn_angle_threshold  = DEFAULT_SHARP_TURN_ANGLE_THRESHOLD;
+volatile double g_decay_factor                = DEFAULT_DECAY_FACTOR;
+
+// Engine safety & drive state (starts disabled for safety)
+volatile bool   g_engine_enabled              = false;
+
+/* ========================================================================= */
+/* Diagnostics                                                               */
+/* ========================================================================= */
+volatile uint32_t g_wifi_tx_count        = 0;
+volatile uint32_t g_wifi_rx_count        = 0;
+volatile uint32_t g_wifi_rx_packet_count = 0;
+volatile uint32_t g_wifi_last_pong_seq   = 0;
 char              g_wifi_last_rx_cmd[64] = "NONE";
 
-#define TX_BUF_SIZE 512
+/* ========================================================================= */
+/* Modular Parameter Registry Table                                          */
+/* Easily add or change parameters for any algorithm on any branch here!     */
+/* ========================================================================= */
+static const config_param_entry_t g_config_param_table[] = {
+    // 2-Zone Steering PID
+    {"STEERING_KP_STRAIGHT",        &g_steering_kp_straight,        0.0,    10.0,  DEFAULT_STEERING_KP_STRAIGHT},
+    {"STEERING_KD_STRAIGHT",        &g_steering_kd_straight,        0.0,     5.0,  DEFAULT_STEERING_KD_STRAIGHT},
+    {"STEERING_KP_CURVE",           &g_steering_kp_curve,           0.0,    15.0,  DEFAULT_STEERING_KP_CURVE},
+    {"STEERING_KD_CURVE",           &g_steering_kd_curve,           0.0,    10.0,  DEFAULT_STEERING_KD_CURVE},
+    {"CURVE_ERROR_THRESHOLD",       &g_curve_error_threshold,       1.0,    45.0,  DEFAULT_CURVE_ERROR_THRESHOLD},
 
-static volatile char rx_buf[RX_BUF_SIZE];
-static volatile uint8_t rx_idx = 0;
+    // Steering Limits & Geometry
+    {"STEERING_LIMIT_RIGHT",        &g_steering_limit_right,        0.0,    90.0,  DEFAULT_STEERING_LIMIT_RIGHT},
+    {"STEERING_LIMIT_LEFT",         &g_steering_limit_left,       -90.0,     0.0,  DEFAULT_STEERING_LIMIT_LEFT},
+    {"STEERING_OFFSET",             &g_steering_offset,           -30.0,    30.0,  DEFAULT_STEERING_OFFSET},
 
-static volatile char tx_buf[TX_BUF_SIZE];
-static volatile uint16_t tx_head = 0;
-static volatile uint16_t tx_tail = 0;
+    // Motor Speeds & Sharp Turn Scaling
+    {"MOTOR_SPEED",                 &g_motor_speed,                 0.0,   100.0,  DEFAULT_MOTOR_SPEED},
+    {"SHARP_TURN_SPEED_COEFF",      &g_sharp_turn_speed_coeff,      0.0,     1.0,  DEFAULT_SHARP_TURN_SPEED_COEFF},
+    {"SPEED_LEFT",                  &g_speed_left,                  0.0,   100.0,  DEFAULT_SPEED_LEFT},
+    {"SPEED_RIGHT",                 &g_speed_right,                 0.0,   100.0,  DEFAULT_SPEED_RIGHT},
 
-/**
- * @brief Servicii non-blocante pentru golirea buffer-ului circular TX în registrul hardware LPUART.
- */
-void Wifi_Flush_Tx(void)
-{
-    while ((tx_head != tx_tail) &&
-           (LPUART_GetStatusFlags(LP_FLEXCOMM7_PERIPHERAL) & kLPUART_TxDataRegEmptyFlag))
-    {
-        char c = tx_buf[tx_tail];
-        tx_tail = (tx_tail + 1U) % TX_BUF_SIZE;
-        LPUART_WriteByte(LP_FLEXCOMM7_PERIPHERAL, (uint8_t)c);
-    }
-}
+    // Track Detection & Decay Thresholds
+    {"SHARP_TURN_ANGLE_THRESHOLD",  &g_sharp_turn_angle_threshold,  5.0,    60.0,  DEFAULT_SHARP_TURN_ANGLE_THRESHOLD},
+    {"DECAY_FACTOR",                &g_decay_factor,                0.1,     1.0,  DEFAULT_DECAY_FACTOR},
+};
+#define CONFIG_PARAM_COUNT (sizeof(g_config_param_table) / sizeof(g_config_param_table[0]))
 
-static void LPUART_SendChar_NonBlocking(char c)
-{
-    uint16_t next_head = (tx_head + 1U) % TX_BUF_SIZE;
-    if (next_head != tx_tail)
-    {
-        tx_buf[tx_head] = c;
-        tx_head = next_head;
-    }
-    Wifi_Flush_Tx();
-}
-
-#define WIFI_RX_RING_SIZE 256
-
-static volatile char s_wifi_rx_ring[WIFI_RX_RING_SIZE];
-static volatile uint16_t s_wifi_rx_head = 0;
-static volatile uint16_t s_wifi_rx_tail = 0;
+/* ========================================================================= */
+/* Interrupt-Driven UART RX Ring Buffer                                      */
+/* ========================================================================= */
+#define RX_RING_BUFFER_SIZE 256
+static volatile char s_rxRing[RX_RING_BUFFER_SIZE];
+static volatile uint16_t s_rxHead = 0;
+static volatile uint16_t s_rxTail = 0;
 
 void LP_FLEXCOMM7_IRQHandler(void)
 {
-    uint32_t flags = LPUART_GetStatusFlags(LP_FLEXCOMM7_PERIPHERAL);
+    uint32_t status = LPUART_GetStatusFlags(LP_FLEXCOMM7_PERIPHERAL);
 
-    if (flags & (kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag | kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag))
+    /* Clear overrun, framing, or noise errors if present */
+    if (status & (kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag | kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag))
     {
         LPUART_ClearStatusFlags(LP_FLEXCOMM7_PERIPHERAL,
                                 kLPUART_RxOverrunFlag | kLPUART_NoiseErrorFlag |
                                 kLPUART_FramingErrorFlag | kLPUART_ParityErrorFlag);
     }
 
-    while (((LPUART_GetStatusFlags(LP_FLEXCOMM7_PERIPHERAL) & kLPUART_RxDataRegFullFlag) != 0U) ||
-           (LPUART_GetRxFifoCount(LP_FLEXCOMM7_PERIPHERAL) > 0U))
+    /* Read incoming byte into ring buffer */
+    while ((LPUART_GetStatusFlags(LP_FLEXCOMM7_PERIPHERAL) & kLPUART_RxDataRegFullFlag) != 0U)
     {
         char c = (char)LPUART_ReadByte(LP_FLEXCOMM7_PERIPHERAL);
-        uint16_t next_head = (s_wifi_rx_head + 1U) % WIFI_RX_RING_SIZE;
-        if (next_head != s_wifi_rx_tail)
+        uint16_t nextHead = (s_rxHead + 1U) % RX_RING_BUFFER_SIZE;
+        if (nextHead != s_rxTail)
         {
-            s_wifi_rx_ring[s_wifi_rx_head] = c;
-            s_wifi_rx_head = next_head;
+            s_rxRing[s_rxHead] = c;
+            s_rxHead = nextHead;
         }
     }
     SDK_ISR_EXIT_BARRIER;
@@ -98,22 +113,31 @@ void LP_FLEXCOMM7_IRQHandler(void)
 
 void Wifi_Init(void)
 {
-    tx_head = 0;
-    tx_tail = 0;
-    rx_idx = 0;
-    s_wifi_rx_head = 0;
-    s_wifi_rx_tail = 0;
+    s_rxHead = 0;
+    s_rxTail = 0;
+    g_wifi_rx_packet_count = 0;
+    g_wifi_rx_count = 0;
+    g_wifi_tx_count = 0;
 
+    /* Enable RX Interrupts and configure NVIC priority */
     LPUART_EnableInterrupts(LP_FLEXCOMM7_PERIPHERAL, kLPUART_RxDataRegFullInterruptEnable | kLPUART_RxOverrunInterruptEnable);
+    NVIC_SetPriority(LP_FLEXCOMM7_IRQn, 3);
     EnableIRQ(LP_FLEXCOMM7_IRQn);
+}
+
+void Wifi_Flush_Tx(void)
+{
+    /* Handled synchronously by direct hardware register polling */
 }
 
 void Wifi_SendString(const char *str)
 {
+    if (str == NULL) return;
     g_wifi_tx_count++;
     while (*str)
     {
-        LPUART_SendChar_NonBlocking(*str++);
+        while ((LPUART_GetStatusFlags(LP_FLEXCOMM7_PERIPHERAL) & kLPUART_TxDataRegEmptyFlag) == 0U) {}
+        LPUART_WriteByte(LP_FLEXCOMM7_PERIPHERAL, (uint8_t)(*str++));
     }
 }
 
@@ -150,28 +174,28 @@ void Wifi_SendTelemetry(uint8_t line_count,
     Wifi_SendString(buf);
 }
 
+/* ========================================================================= */
+/* Command Parser (Table-Driven)                                             */
+/* Format expected: "NAME_OF_THE_PARAMETER=NEW_VALUE"                        */
+/* ========================================================================= */
 void Wifi_ParseCommand(const char *cmd)
 {
+    if (cmd == NULL) return;
+
     char buf[128];
     strncpy(buf, cmd, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
 
-    // Store last received message and increment RX counter
-    strncpy(g_wifi_last_rx_cmd, cmd, sizeof(g_wifi_last_rx_cmd) - 1);
-    g_wifi_last_rx_cmd[sizeof(g_wifi_last_rx_cmd) - 1] = '\0';
-    g_wifi_rx_count++;
-
     char *eq = strchr(buf, '=');
     if (!eq) {
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: \"%s\"\r\n", cmd);
         return;
     }
 
-    *eq = '\0'; // Separa cheia de valoare
+    *eq = '\0';
     char *key = buf;
     char *val_str = eq + 1;
 
-    // Eliminare spatii de la cheie
+    // Trim whitespace from key
     while (*key == ' ' || *key == '\t' || *key == '\r' || *key == '\n') key++;
     char *k_end = key + strlen(key) - 1;
     while (k_end > key && (*k_end == ' ' || *k_end == '\t' || *k_end == '\r' || *k_end == '\n')) {
@@ -179,139 +203,117 @@ void Wifi_ParseCommand(const char *cmd)
         k_end--;
     }
 
-    // Eliminare spatii de la valoare
+    // Trim whitespace from val_str
     while (*val_str == ' ' || *val_str == '\t' || *val_str == '\r' || *val_str == '\n') val_str++;
-    float val = (float)atof(val_str);
-    int val_i = (int)val;
-    int val_f = (int)((val - (float)val_i) * 1000.0f);
-    if (val_f < 0) val_f = -val_f;
+    char *v_end = val_str + strlen(val_str) - 1;
+    while (v_end > val_str && (*v_end == ' ' || *v_end == '\t' || *v_end == '\r' || *v_end == '\n')) {
+        *v_end = '\0';
+        v_end--;
+    }
 
+    float val = (float)atof(val_str);
+
+    // 1. Diagnostic Ping / Pong
     if (strcmp(key, "PING") == 0) {
         char resp[32];
-        snprintf(resp, sizeof(resp), "PONG=%d\r\n", val_i);
+        snprintf(resp, sizeof(resp), "PONG=%d\r\n", (int)val);
         Wifi_SendString(resp);
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: PING=%d -> Replying PONG=%d\r\n", val_i, val_i);
+        PRINTF("[FRDM-UART] Replied PONG=%d to ESP32\r\n", (int)val);
         return;
     }
     else if (strcmp(key, "PONG") == 0) {
-        g_wifi_last_pong_seq = (uint32_t)val_i;
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: PONG=%d (Round-trip confirmed!)\r\n", val_i);
+        g_wifi_last_pong_seq = (uint32_t)val;
+        PRINTF("[FRDM-UART] RX PONG=%d from ESP32 (Round-trip OK!)\r\n", (int)val);
         return;
     }
-    else if (strcmp(key, "HEARTBEAT") == 0) {
-        Wifi_SendString("ACK: HEARTBEAT = 1\r\n");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: HEARTBEAT=%d -> Sent ACK\r\n", val_i);
+
+    // 2. Safety & Engine Controls
+    if (strcmp(key, "EMERGENCY_STOP") == 0) {
+        g_engine_enabled = false;
+        HbridgeSpeed(&g_hbridge, 0, 0);
+        Steer(0.0 + STEERING_OFFSET);
+        Wifi_SendString("ACK:EMERGENCY_STOP=1\r\n");
+        PRINTF("\r\n[FRDM-UART] >>> EMERGENCY STOP ACTIVATED! Motors halted, steering centered <<<\r\n\r\n");
         return;
-    }
-    else if (strcmp(key, "KP_STRAIGHT") == 0 || strcmp(key, "STEERING_KP_STRAIGHT") == 0) {
-        g_steering_kp_straight = (double)val;
-        Wifi_SendString("ACK: KP_STRAIGHT = ");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: KP_STRAIGHT=%.3f (ACK sent)\r\n", (double)val);
-    }
-    else if (strcmp(key, "KD_STRAIGHT") == 0 || strcmp(key, "STEERING_KD_STRAIGHT") == 0) {
-        g_steering_kd_straight = (double)val;
-        Wifi_SendString("ACK: KD_STRAIGHT = ");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: KD_STRAIGHT=%.3f (ACK sent)\r\n", (double)val);
-    }
-    else if (strcmp(key, "KP_CURVE") == 0 || strcmp(key, "STEERING_KP_CURVE") == 0) {
-        g_steering_kp_curve = (double)val;
-        Wifi_SendString("ACK: KP_CURVE = ");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: KP_CURVE=%.3f (ACK sent)\r\n", (double)val);
-    }
-    else if (strcmp(key, "KD_CURVE") == 0 || strcmp(key, "STEERING_KD_CURVE") == 0) {
-        g_steering_kd_curve = (double)val;
-        Wifi_SendString("ACK: KD_CURVE = ");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: KD_CURVE=%.3f (ACK sent)\r\n", (double)val);
-    }
-    else if (strcmp(key, "CURVE_THRES") == 0 || strcmp(key, "CURVE_ERROR_THRESHOLD") == 0) {
-        g_curve_error_threshold = (double)val;
-        Wifi_SendString("ACK: CURVE_THRES = ");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: CURVE_THRES=%.3f (ACK sent)\r\n", (double)val);
-    }
-    else if (strcmp(key, "STEERING_P") == 0) {
-        g_steering_kp_straight = (double)val;
-        g_steering_kp_curve = (double)val * 2.0;
-        Wifi_SendString("ACK: STEERING_P = ");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: STEERING_P=%.3f (ACK sent)\r\n", (double)val);
-    }
-    else if (strcmp(key, "STEERING_D") == 0) {
-        g_steering_kd_straight = (double)val;
-        g_steering_kd_curve = (double)val * 2.4;
-        Wifi_SendString("ACK: STEERING_D = ");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: STEERING_D=%.3f (ACK sent)\r\n", (double)val);
-    }
-    else if (strcmp(key, "MOTOR_SPEED") == 0 || strcmp(key, "SPEED") == 0) {
-        g_motor_speed = (double)val;
-        Wifi_SendString("ACK: MOTOR_SPEED = ");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: MOTOR_SPEED=%.1f (ACK sent)\r\n", (double)val);
-    }
-    else if (strcmp(key, "SHARP_COEFF") == 0 || strcmp(key, "SHARP_TURN_SPEED_COEFF") == 0) {
-        if (val < 0.0f) val = 0.0f;
-        if (val > 1.0f) val = 1.0f;
-        g_sharp_turn_speed_coeff = (double)val;
-        Wifi_SendString("ACK: SHARP_COEFF = ");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: SHARP_COEFF=%.2f (ACK sent)\r\n", (double)val);
     }
     else if (strcmp(key, "ENGINE_ENABLED") == 0) {
         g_engine_enabled = (val > 0.5f);
-        Wifi_SendString("ACK: ENGINE_ENABLED = ");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: ENGINE_ENABLED=%d (ACK sent)\r\n", g_engine_enabled ? 1 : 0);
-    }
-    else if (strcmp(key, "EMERGENCY_STOP") == 0) {
-        g_engine_enabled = false;
-        HbridgeSpeed(&g_hbridge, 0, 0);
-        Steer(0.0);
-        Wifi_SendString("ACK: EMERGENCY_STOP = 1\r\n");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: EMERGENCY_STOP (Engines halted, ACK sent)\r\n");
-        return;
-    }
-    else if (strcmp(key, "DECAY_FACTOR") == 0) {
-        g_decay_factor = (double)val;
-        Wifi_SendString("ACK: DECAY_FACTOR = ");
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: DECAY_FACTOR=%.2f (ACK sent)\r\n", (double)val);
-    }
-    else {
-        PRINTF("[COMM DUPLEX TEST] RX from ESP32: unknown command \"%s\"\r\n", cmd);
+        if (!g_engine_enabled) {
+            HbridgeSpeed(&g_hbridge, 0, 0);
+        }
+        char ack[64];
+        snprintf(ack, sizeof(ack), "ACK:ENGINE_ENABLED=%d\r\n", g_engine_enabled ? 1 : 0);
+        Wifi_SendString(ack);
+        PRINTF("[FRDM-UART] Engine state changed: %s\r\n", g_engine_enabled ? "RUNNING" : "STOPPED");
         return;
     }
 
-    char ack_buf[32];
-    snprintf(ack_buf, sizeof(ack_buf), "%d.%03d\r\n", val_i, val_f);
-    Wifi_SendString(ack_buf);
+    // 3. Search Parameter Registry Table
+    bool found = false;
+    for (size_t i = 0; i < CONFIG_PARAM_COUNT; i++) {
+        if (strcmp(key, g_config_param_table[i].name) == 0) {
+            double clamped = (double)val;
+            if (clamped < g_config_param_table[i].min_val) clamped = g_config_param_table[i].min_val;
+            if (clamped > g_config_param_table[i].max_val) clamped = g_config_param_table[i].max_val;
 
+            *g_config_param_table[i].val_ptr = clamped;
+
+            char ack[64];
+            snprintf(ack, sizeof(ack), "ACK:%s=%.4f\r\n", g_config_param_table[i].name, clamped);
+            Wifi_SendString(ack);
+
+            PRINTF("[FRDM-UART] Parameter updated: %s = %.4f (range [%.1f, %.1f])\r\n",
+                   g_config_param_table[i].name, clamped,
+                   g_config_param_table[i].min_val, g_config_param_table[i].max_val);
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        PRINTF("[FRDM-UART] Warning: Unrecognized parameter key: \"%s\"\r\n", key);
+        char err[64];
+        snprintf(err, sizeof(err), "ERR:UNKNOWN_PARAM=%s\r\n", key);
+        Wifi_SendString(err);
+    }
 }
 
-
+/* ========================================================================= */
+/* Main RX Processing Loop (Polled in Main)                                  */
+/* ========================================================================= */
 void Wifi_Process_Rx(void)
 {
-    // Always flush non-blocking UART TX ring buffer
-    Wifi_Flush_Tx();
+    static char packetBuffer[128];
+    static uint8_t packetIdx = 0;
 
-    // Process all bytes received in s_wifi_rx_ring by ISR
-    while (s_wifi_rx_head != s_wifi_rx_tail)
+    while (s_rxHead != s_rxTail)
     {
-        char c = s_wifi_rx_ring[s_wifi_rx_tail];
-        s_wifi_rx_tail = (s_wifi_rx_tail + 1U) % WIFI_RX_RING_SIZE;
+        char c = s_rxRing[s_rxTail];
+        s_rxTail = (s_rxTail + 1U) % RX_RING_BUFFER_SIZE;
 
-        if (c == ';' || c == '\n' || c == '\r')
+        if (c == '\n' || c == '\r' || c == ';')
         {
-            if (rx_idx > 0U)
+            if (packetIdx > 0)
             {
-                rx_buf[rx_idx] = '\0';
-                Wifi_ParseCommand((const char *)rx_buf);
-                rx_idx = 0U;
+                packetBuffer[packetIdx] = '\0';
+                g_wifi_rx_packet_count++;
+                g_wifi_rx_count = g_wifi_rx_packet_count;
+
+                strncpy(g_wifi_last_rx_cmd, packetBuffer, sizeof(g_wifi_last_rx_cmd) - 1);
+                g_wifi_last_rx_cmd[sizeof(g_wifi_last_rx_cmd) - 1] = '\0';
+
+                PRINTF("[FRDM-UART] RX Packet #%lu: \"%s\"\r\n",
+                       (unsigned long)g_wifi_rx_packet_count, packetBuffer);
+
+                // Parse and execute parameter update
+                Wifi_ParseCommand(packetBuffer);
+
+                packetIdx = 0;
             }
         }
-        else if ((uint8_t)c >= 32U)
+        else if ((uint8_t)c >= 32U && packetIdx < (sizeof(packetBuffer) - 1))
         {
-            if (rx_idx < (uint8_t)(sizeof(rx_buf) - 1U))
-            {
-                rx_buf[rx_idx++] = c;
-            }
-            else
-            {
-                rx_idx = 0U;
-            }
+            packetBuffer[packetIdx++] = c;
         }
     }
 }

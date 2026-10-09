@@ -1,119 +1,157 @@
-//192.168.4.1
+/*
+ * NXP CUP - ESP32 Modular Parameter Tuning Web Server
+ * 
+ * Hardware Connections:
+ *   ESP32 GND          <---> FRDM J9 Pin 22 (GND) or J7 Pin 10
+ *   ESP32 GPIO17 (TX2) ----> FRDM J9 Pin 20 (P3_2 / RX) or J7 Pin 8
+ *   ESP32 GPIO16 (RX2) <---- FRDM J9 Pin 19 (P3_3 / TX) or J7 Pin 6
+ *
+ * Network:
+ *   Access Point SSID: NXP_Robot_Tuning
+ *   Password:          12345678
+ *   IP Address:        http://192.168.4.1
+ *   mDNS URL:          http://nxp-robot.local
+ *
+ * Protocol:
+ *   ESP -> FRDM:  "NAME_OF_THE_PARAMETER=NEW_VALUE\n"
+ *   FRDM -> ESP:  "ACK:NAME_OF_THE_PARAMETER=NEW_VALUE\r\n"
+ */
 
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
 
-/* Access Point Configuration */
-const char* AP_SSID   = "ESP32_Robot_AP2";  // Network Name
-const char* AP_PASS   = "12345678";        // Minimum 8 characters
-const char* MDNS_NAME = "esp32_2";           // Hostname (http://esp32_2.local)
+/* ========================================================================= */
+/* Access Point Configuration                                                */
+/* ========================================================================= */
+const char* AP_SSID   = "NXP_Robot_Tuning";
+const char* AP_PASS   = "12345678";
+const char* MDNS_NAME = "nxp-robot";
 
 WebServer server(80);
 Preferences preferences;
 
-// Local stored PID & Motor values (default values matching bootcamp car)
-float kp_straight        = 1.50f;
-float kd_straight        = 0.50f;
-float kp_curve           = 3.00f;
-float kd_curve           = 1.20f;
-float curve_threshold    = 10.0f;
-float motor_speed        = 90.0f;
-float sharp_coeff        = 0.20f;
-float decay_factor       = 0.90f;
-bool engine_enabled      = false;
-
-/* Minimal Telemetry Data Structure & Ring Buffer */
-struct TelemetryFrame {
-    unsigned long id;
-    unsigned long timestamp;
-    uint8_t lineCount;
-    char whichLines[16];
-    uint16_t numVectors;
-    uint32_t horizVectorCount;
-    float steeringAngle;
-    int lx0, ly0, lx1, ly1;
-    int rx0, ry0, rx1, ry1;
+/* ========================================================================= */
+/* Modular Parameter Definition Structure                                    */
+/* Easily add, modify, or remove parameters for other branches here!         */
+/* ========================================================================= */
+struct ParamDef {
+    const char* key;          // Exact command name sent to FRDM (matches Config.h)
+    const char* label;        // Human-readable title
+    const char* group;        // Card grouping in UI
+    float minVal;             // Slider min
+    float maxVal;             // Slider max
+    float step;               // Step resolution
+    float defaultVal;         // Factory default
+    float currentVal;         // Live value in RAM
 };
 
-#define TELEMETRY_BUFFER_SIZE 300
-TelemetryFrame telemetryRingBuffer[TELEMETRY_BUFFER_SIZE];
-int telemetryHead = 0;
-int telemetryCount = 0;
-unsigned long telemetrySeqCounter = 0;
+ParamDef params[] = {
+    // Group: Steering PID (2-Zone Variable PID)
+    {"STEERING_KP_STRAIGHT",        "Straight Kp",             "Steering PID",        0.0f,  10.0f, 0.05f, 1.50f, 1.50f},
+    {"STEERING_KD_STRAIGHT",        "Straight Kd",             "Steering PID",        0.0f,   5.0f, 0.05f, 0.50f, 0.50f},
+    {"STEERING_KP_CURVE",           "Curve Kp",                "Steering PID",        0.0f,  15.0f, 0.05f, 3.00f, 3.00f},
+    {"STEERING_KD_CURVE",           "Curve Kd",                "Steering PID",        0.0f,  10.0f, 0.05f, 1.20f, 1.20f},
+    {"CURVE_ERROR_THRESHOLD",       "Curve Error Threshold",   "Steering PID",        1.0f,  45.0f, 0.50f, 10.0f, 10.0f},
 
-void processTelemetryLine(const String& line) {
-    if (!line.startsWith("TELEM:")) return;
+    // Group: Steering Calibration & Limits
+    {"STEERING_LIMIT_RIGHT",        "Steering Limit Right",    "Steering Limits",     0.0f,  90.0f, 1.00f, 65.0f, 65.0f},
+    {"STEERING_LIMIT_LEFT",         "Steering Limit Left",     "Steering Limits",   -90.0f,   0.0f, 1.00f, -60.0f,-60.0f},
+    {"STEERING_OFFSET",             "Steering Center Offset",  "Steering Limits",   -30.0f,  30.0f, 0.50f,  0.0f,  0.0f},
 
-    TelemetryFrame frame;
-    frame.id = ++telemetrySeqCounter;
-    frame.timestamp = millis();
-    frame.lineCount = 0;
-    strcpy(frame.whichLines, "NONE");
-    frame.numVectors = 0;
-    frame.horizVectorCount = 0;
-    frame.steeringAngle = 0.0f;
-    frame.lx0 = 0; frame.ly0 = 0; frame.lx1 = 0; frame.ly1 = 0;
-    frame.rx0 = 0; frame.ry0 = 0; frame.rx1 = 0; frame.ry1 = 0;
+    // Group: Motor Speed & Dynamics
+    {"MOTOR_SPEED",                 "Base Motor Speed (%)",    "Motor & Speed",       0.0f, 100.0f, 1.00f, 90.0f, 90.0f},
+    {"SHARP_TURN_SPEED_COEFF",      "Sharp Turn Speed Coeff",  "Motor & Speed",       0.0f,   1.0f, 0.05f, 0.20f, 0.20f},
+    {"SPEED_LEFT",                  "Left Wheel Base Speed",   "Motor & Speed",       0.0f, 100.0f, 1.00f, 40.0f, 40.0f},
+    {"SPEED_RIGHT",                 "Right Wheel Base Speed",  "Motor & Speed",       0.0f, 100.0f, 1.00f, 40.0f, 40.0f},
 
-    String content = line.substring(6);
-    int start = 0;
-    while (start < content.length()) {
-        int delim = content.indexOf('|', start);
-        if (delim == -1) delim = content.length();
-        String token = content.substring(start, delim);
-        token.trim();
-        start = delim + 1;
+    // Group: Thresholds & Decay
+    {"SHARP_TURN_ANGLE_THRESHOLD",  "Sharp Turn Threshold (\xC2\xB0)", "Thresholds & Decay",  5.0f,  60.0f, 1.00f, 30.0f, 30.0f},
+    {"DECAY_FACTOR",                "Steering Decay Factor",   "Thresholds & Decay",  0.1f,   1.0f, 0.01f, 0.90f, 0.90f},
+};
+const size_t NUM_PARAMS = sizeof(params) / sizeof(params[0]);
 
-        int eq = token.indexOf('=');
-        if (eq != -1) {
-            String key = token.substring(0, eq);
-            String val = token.substring(eq + 1);
-            if (key == "lines") frame.lineCount = (uint8_t)val.toInt();
-            else if (key == "which") strncpy(frame.whichLines, val.c_str(), sizeof(frame.whichLines) - 1);
-            else if (key == "num_vec") frame.numVectors = (uint16_t)val.toInt();
-            else if (key == "horiz_cnt") frame.horizVectorCount = (uint32_t)val.toInt();
-            else if (key == "steer") frame.steeringAngle = val.toFloat();
-            else if (key == "lx0") frame.lx0 = val.toInt();
-            else if (key == "ly0") frame.ly0 = val.toInt();
-            else if (key == "lx1") frame.lx1 = val.toInt();
-            else if (key == "ly1") frame.ly1 = val.toInt();
-            else if (key == "rx0") frame.rx0 = val.toInt();
-            else if (key == "ry0") frame.ry0 = val.toInt();
-            else if (key == "rx1") frame.rx1 = val.toInt();
-            else if (key == "ry1") frame.ry1 = val.toInt();
-        }
+// Engine state
+bool engine_enabled = false;
+
+// Diagnostics
+unsigned long lastPingTime = 0;
+uint32_t pingSequence = 0;
+uint32_t lastPongReceived = 0;
+String lastRxMessage = "NONE";
+uint32_t rxPacketCount = 0;
+
+/* ========================================================================= */
+/* Preferences Storage                                                       */
+/* ========================================================================= */
+void loadStoredParams() {
+    preferences.begin("nxp_tuning", false);
+    for (size_t i = 0; i < NUM_PARAMS; i++) {
+        // Use short key for NVS (max 15 chars)
+        char nvsKey[16];
+        snprintf(nvsKey, sizeof(nvsKey), "p_%d", (int)i);
+        params[i].currentVal = preferences.getFloat(nvsKey, params[i].defaultVal);
     }
-
-    telemetryRingBuffer[telemetryHead] = frame;
-    telemetryHead = (telemetryHead + 1) % TELEMETRY_BUFFER_SIZE;
-    if (telemetryCount < TELEMETRY_BUFFER_SIZE) {
-        telemetryCount++;
-    }
+    engine_enabled = false; // Always safe stopped on boot
 }
 
+void saveStoredParam(size_t index) {
+    if (index >= NUM_PARAMS) return;
+    char nvsKey[16];
+    snprintf(nvsKey, sizeof(nvsKey), "p_%d", (int)index);
+    preferences.putFloat(nvsKey, params[index].currentVal);
+}
+
+/* ========================================================================= */
+/* UART Helpers to FRDM                                                      */
+/* ========================================================================= */
+void sendParamToFRDM(const char* name, float val) {
+    // Protocol requirement: "NAME_OF_THE_PARAMETER=NEW_VALUE\n"
+    Serial2.printf("%s=%.4f\n", name, val);
+    Serial2.flush();
+    Serial.printf("[ESP32 TX -> FRDM] %s=%.4f\n", name, val);
+}
+
+void syncAllParamsToFRDM() {
+    Serial.println("[ESP32] Syncing all parameters to FRDM board...");
+    for (size_t i = 0; i < NUM_PARAMS; i++) {
+        sendParamToFRDM(params[i].key, params[i].currentVal);
+        delay(35);
+    }
+    // Always start with engine stopped
+    Serial2.print("ENGINE_ENABLED=0\n");
+    Serial2.flush();
+    delay(20);
+}
+
+/* ========================================================================= */
+/* Incoming UART Data Processing                                             */
+/* ========================================================================= */
 void processSerial2Input() {
     static String rxLine = "";
     while (Serial2.available()) {
         char c = (char)Serial2.read();
-        Serial.write(c); // Forward byte to USB serial debug
+        Serial.write(c); // Mirror to USB Serial
 
         if (c == '\n' || c == '\r') {
             rxLine.trim();
             if (rxLine.length() > 0) {
-                if (rxLine.startsWith("TELEM:")) {
-                    processTelemetryLine(rxLine);
-                } else if (rxLine.startsWith("PING=")) {
+                rxPacketCount++;
+                lastRxMessage = rxLine;
+
+                if (rxLine.startsWith("PING=")) {
                     String seq = rxLine.substring(5);
                     Serial2.print("PONG=" + seq + "\n");
                     Serial2.flush();
-                    Serial.println("\n[ESP32 DUPLEX] RX from FRDM: PING=" + seq + " -> Replied with PONG=" + seq);
-                } else if (rxLine.startsWith("PONG=")) {
-                    String seq = rxLine.substring(5);
-                    Serial.println("\n[ESP32 DUPLEX] RX from FRDM: PONG=" + seq + " (Round-trip confirmed!)");
-                } else if (rxLine.startsWith("ACK:")) {
-                    Serial.println("\n[ESP32 DUPLEX] RX from FRDM: " + rxLine);
+                    Serial.println("\n[ESP32 DUPLEX] RX PING=" + seq + " -> Replied PONG=" + seq);
+                }
+                else if (rxLine.startsWith("PONG=")) {
+                    lastPongReceived = rxLine.substring(5).toInt();
+                    Serial.printf("\n[ESP32 DUPLEX] Round-trip confirmed! PONG=%lu\n", (unsigned long)lastPongReceived);
+                }
+                else if (rxLine.startsWith("ACK:")) {
+                    Serial.println("\n[ESP32 ACK] Confirmation from FRDM: " + rxLine);
                 }
                 rxLine = "";
             }
@@ -121,666 +159,296 @@ void processSerial2Input() {
             if (rxLine.length() < 256) {
                 rxLine += c;
             } else {
-                rxLine = ""; // buffer overflow safeguard
+                rxLine = ""; // Overflow guard
             }
         }
     }
 }
 
-/* Embedded HTML Dashboard */
+/* ========================================================================= */
+/* Periodic Heartbeat                                                        */
+/* ========================================================================= */
+void sendHeartbeat() {
+    unsigned long now = millis();
+    if (now - lastPingTime >= 2000UL) {
+        lastPingTime = now;
+        pingSequence++;
+        Serial2.printf("PING=%lu\n", (unsigned long)pingSequence);
+        Serial2.flush();
+    }
+}
+
+/* ========================================================================= */
+/* Embedded HTML / JS Dashboard                                              */
+/* ========================================================================= */
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
-<html lang="ro">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NXP Robot - PID Control Panel</title>
+  <title>NXP Robot - Parameters Tuning</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --card: #1e293b;
+      --bg: #090d16;
+      --card-bg: #131c2e;
+      --card-border: #1e2e4a;
       --accent: #38bdf8;
       --accent-hover: #0284c7;
-      --text: #f8fafc;
+      --text: #f1f5f9;
       --muted: #94a3b8;
-      --border: #334155;
       --success: #22c55e;
       --danger: #ef4444;
       --danger-hover: #dc2626;
       --warning: #f59e0b;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
-    .container { width: 100%; max-width: 1200px; }
-    .header { text-align: center; margin-bottom: 20px; }
-    .header h1 { font-size: 1.75rem; color: var(--accent); margin-bottom: 6px; }
-    .header p { color: var(--muted); font-size: 0.9rem; }
-    .badge { display: inline-block; background: #0369a1; color: #e0f2fe; font-size: 0.75rem; font-weight: bold; padding: 4px 10px; border-radius: 12px; margin-top: 6px; }
+    body { background: var(--bg); color: var(--text); padding: 18px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    .container { width: 100%; max-width: 1050px; }
     
-    .dashboard-layout { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; width: 100%; align-items: start; }
-    @media (max-width: 900px) {
-      .dashboard-layout { grid-template-columns: 1fr; }
+    header { text-align: center; margin-bottom: 20px; }
+    header h1 { font-size: 1.8rem; color: var(--accent); margin-bottom: 6px; letter-spacing: 0.5px; }
+    header p { color: var(--muted); font-size: 0.9rem; }
+    .badge-bar { display: flex; justify-content: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+    .badge { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-family: monospace; }
+    .badge-active { background: #14532d; color: #86efac; border-color: #22c55e; }
+
+    /* Top Safety Controls */
+    .safety-panel { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 14px; padding: 18px; margin-bottom: 22px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+    .safety-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .safety-title { font-weight: 700; font-size: 1.05rem; }
+    .status-pill { font-size: 0.85rem; font-weight: bold; padding: 5px 12px; border-radius: 12px; }
+    .status-off { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; }
+    .status-on { background: #14532d; color: #86efac; border: 1px solid #22c55e; }
+
+    .estop-btn { width: 100%; background: var(--danger); color: #fff; border: none; font-size: 1.25rem; font-weight: 800; padding: 16px; border-radius: 10px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 14px rgba(239,68,68,0.4); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .estop-btn:hover { background: var(--danger-hover); transform: translateY(-1px); }
+    .estop-btn:active { transform: translateY(1px); }
+
+    .engine-btn-group { display: flex; gap: 12px; }
+    .btn-start { flex: 1; background: var(--success); color: #022c22; font-size: 1rem; padding: 12px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+    .btn-start:hover { background: #16a34a; color: #fff; }
+    .btn-stop { flex: 1; background: var(--warning); color: #451a03; font-size: 1rem; padding: 12px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+    .btn-stop:hover { background: #d97706; color: #fff; }
+
+    /* Cards Grid */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 18px; margin-bottom: 20px; }
+    @media (max-width: 600px) {
+      .grid { grid-template-columns: 1fr; }
     }
 
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-    .card-title { font-size: 1.1rem; color: var(--text); margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
-    
-    .top-controls-card { margin-bottom: 20px; }
-    .estop-btn { width: 100%; background: var(--danger); color: #fff; border: none; font-size: 1.25rem; font-weight: 800; padding: 16px; border-radius: 12px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
-    .estop-btn:hover { background: var(--danger-hover); transform: scale(1.01); }
-    .estop-btn:active { transform: scale(0.98); }
+    .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 14px; padding: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .card-title { font-size: 1.1rem; color: var(--accent); margin-bottom: 16px; border-bottom: 1px solid var(--card-border); padding-bottom: 8px; font-weight: 600; }
 
-    .engine-controls { display: flex; gap: 10px; }
-    .btn-start { flex: 1; background: var(--success); color: #052e16; font-size: 1rem; padding: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
-    .btn-start:hover { background: #16a34a; color: #fff; }
-    .btn-pause { flex: 1; background: var(--warning); color: #451a03; font-size: 1rem; padding: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
-    .btn-pause:hover { background: #d97706; color: #fff; }
-
-    .status-pill { font-size: 0.85rem; padding: 4px 10px; border-radius: 10px; font-weight: bold; }
-    .status-on { background: #14532d; color: #4ade80; border: 1px solid #22c55e; }
-    .status-off { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; }
-
-    .param-group { margin-bottom: 18px; }
-    .param-group:last-child { margin-bottom: 0; }
-    .param-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .param-row { margin-bottom: 16px; }
+    .param-row:last-child { margin-bottom: 0; }
+    .param-meta { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
     .param-name { font-weight: 600; font-size: 0.95rem; color: #e2e8f0; }
-    .param-val { font-family: monospace; font-size: 1rem; color: var(--accent); background: #090d16; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border); }
-    .controls { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+    .param-val { font-family: monospace; font-size: 1rem; color: var(--accent); background: #0b1120; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--card-border); }
+
+    .param-controls { display: flex; gap: 10px; align-items: center; }
     input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; height: 6px; }
-    input[type=number] { width: 85px; padding: 6px 8px; background: #0f172a; border: 1px solid var(--border); border-radius: 6px; color: #fff; font-size: 0.95rem; text-align: center; }
-    .btn { background: var(--accent); color: #0f172a; border: none; font-weight: bold; padding: 8px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
-    .btn:hover { background: var(--accent-hover); color: #fff; }
-    .btn-all { width: 100%; padding: 12px; font-size: 1rem; margin-top: 10px; background: #0284c7; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-    
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
-    .metric-box { background: #090d16; border: 1px solid var(--border); border-radius: 8px; padding: 10px; text-align: center; }
-    .metric-title { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
-    .metric-val { font-size: 1.15rem; font-weight: bold; color: var(--accent); font-family: monospace; }
-    .line-pill { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; }
-    .pill-both { background: #14532d; color: #4ade80; border: 1px solid #22c55e; }
-    .pill-single { background: #78350f; color: #fde047; border: 1px solid #f59e0b; }
-    .pill-turn { background: #0e7490; color: #67e8f9; border: 1px solid #06b6d4; }
-    .pill-none { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; }
+    input[type=number] { width: 90px; padding: 7px; background: #0b1120; border: 1px solid var(--card-border); border-radius: 6px; color: #fff; font-size: 0.95rem; text-align: center; }
+    .btn-set { background: var(--accent); color: #090d16; border: none; font-weight: bold; padding: 8px 14px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+    .btn-set:hover { background: var(--accent-hover); color: #fff; }
 
-    /* Pixy 2D Visualizer Styling */
-    .pixy-canvas-container { position: relative; width: 100%; background: #030712; border: 1px solid var(--border); border-radius: 10px; padding: 8px; text-align: center; margin-bottom: 8px; }
-    #pixyCanvas { width: 100%; max-width: 500px; height: 255px; background: #090d16; border-radius: 8px; display: block; margin: 0 auto; }
-    .coords-badge-container { display: flex; flex-direction: column; gap: 6px; font-family: monospace; font-size: 0.82rem; margin-top: 6px; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid var(--border); }
-    .coords-left { color: #38bdf8; font-weight: bold; }
-    .coords-right { color: #4ade80; font-weight: bold; }
+    .btn-save-all { width: 100%; padding: 14px; font-size: 1.05rem; background: #0284c7; color: #fff; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; margin-top: 10px; transition: 0.2s; box-shadow: 0 4px 14px rgba(2,132,199,0.3); }
+    .btn-save-all:hover { background: #0369a1; }
 
-    #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--success); color: #052e16; padding: 12px 24px; border-radius: 8px; font-weight: bold; opacity: 0; transition: opacity 0.3s; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 1000; }
+    /* Toast Notification */
+    #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--success); color: #022c22; padding: 12px 24px; border-radius: 8px; font-weight: bold; opacity: 0; transition: opacity 0.3s; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 1000; font-size: 0.95rem; }
     #toast.show { opacity: 1; }
-    #toast.danger-toast { background: var(--danger); color: #fff; }
+    #toast.toast-danger { background: var(--danger); color: #fff; }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>NXP Robot Control Panel</h1>
-      <p>Tuning PID Control Panel (Port 80)</p>
-      <div class="badge">AP: ESP32_Robot_AP2 | http://esp32_2.local</div>
-    </div>
-
-    <!-- Top Section: Start, Stop & Emergency Controls -->
-    <div class="card top-controls-card">
-      <div class="card-title">
-        <span>Control Motoare & Stare Robot</span>
-        <span id="engine_status" class="status-pill status-off">STOPPED</span>
+    <header>
+      <h1>NXP Robot - Parameters Tuning</h1>
+      <p>Modular Algorithm Parameter Interface</p>
+      <div class="badge-bar">
+        <span class="badge">AP: NXP_Robot_Tuning</span>
+        <span class="badge">IP: 192.168.4.1</span>
+        <span id="comm_badge" class="badge">UART: CONNECTING...</span>
       </div>
-      <button class="estop-btn" onclick="triggerEmergencyStop()">FRANA URGENTA (E-STOP)</button>
-      <div class="engine-controls">
-        <button class="btn-start" onclick="setEngine(1)">PORNESTE MOTOARELE (START)</button>
-        <button class="btn-pause" onclick="setEngine(0)">OPRESTE MOTOARELE (STOP)</button>
+    </header>
+
+    <!-- Top Safety & Engine Controls -->
+    <div class="safety-panel">
+      <div class="safety-header">
+        <span class="safety-title">Motor & Safety Controls</span>
+        <span id="engine_badge" class="status-pill status-off">STOPPED</span>
       </div>
-    </div>
-
-    <!-- Dashboard 2-Column Grid Layout -->
-    <div class="dashboard-layout">
-      <!-- LEFT SIDE: Plots & Metrics -->
-      <div class="left-column">
-        <!-- 2D Pixy Camera Frame Visualizer Plot Card -->
-        <div class="card">
-          <div class="card-title">
-            <span>Vizualizator 2D Pixy Camera (78x51 px)</span>
-            <span id="pixy_state_badge" class="line-pill pill-none">0 (NONE)</span>
-          </div>
-
-          <div class="pixy-canvas-container">
-            <canvas id="pixyCanvas" width="390" height="255"></canvas>
-          </div>
-
-          <div class="coords-badge-container">
-            <div class="coords-left" id="coord_left_text">Linia Stanga: (lx0=0, ly0=0) -> (lx1=0, ly1=0) [NEDETECTAT]</div>
-            <div class="coords-right" id="coord_right_text">Linia Dreapta: (rx0=0, ry0=0) -> (rx1=0, ry1=0) [NEDETECTAT]</div>
-          </div>
-        </div>
-
-        <!-- Live Steering Diagram Plot Card -->
-        <div class="card">
-          <div class="card-title">
-            <span>Diagrame Live</span>
-          </div>
-
-          <div style="width: 100%; height: 150px; background: #090d16; border: 1px solid var(--border); border-radius: 8px; padding: 6px; position: relative;">
-            <canvas id="steerChartCanvas" width="550" height="138" style="width: 100%; height: 100%;"></canvas>
-          </div>
-        </div>
-
-        <!-- Telemetry Summary Card -->
-        <div class="card">
-          <div class="card-title">
-            <span>Telemetrie</span>
-          </div>
-
-          <div class="grid-2">
-            <div class="metric-box">
-              <div class="metric-title">Vectori Detectati</div>
-              <div id="metric_vecs" class="metric-val">0</div>
-            </div>
-            <div class="metric-box">
-              <div class="metric-title">Vectori Orizontali</div>
-              <div id="metric_horiz_cnt" class="metric-val">0</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- RIGHT SIDE: Parameter Sliders -->
-      <div class="right-column">
-        <!-- Motor Speed Control Card -->
-        <div class="card">
-          <div class="card-title">
-            <span>Control Viteza Motoare</span>
-          </div>
-
-          <div class="param-group">
-            <div class="param-header">
-              <span class="param-name">MOTOR_SPEED (Viteza %)</span>
-              <span class="param-val" id="val_SPEED">90%</span>
-            </div>
-            <div class="controls">
-              <input type="range" id="slider_SPEED" min="0" max="100" step="1" value="90" oninput="syncSpeed(this.value)">
-              <input type="number" id="num_SPEED" min="0" max="100" step="1" value="90" oninput="syncSpeedSlider(this.value)">
-              <button class="btn" onclick="saveSpeed()">Set Speed</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Zone 1: Straight Line PID Card -->
-        <div class="card">
-          <div class="card-title">Zone 1: Linie Dreapt&#x103; (Straight PID)</div>
-          
-          <div class="param-group">
-            <div class="param-header">
-              <span class="param-name">KP_STRAIGHT (Propor&#x21B;ional)</span>
-              <span class="param-val" id="val_KP_STR">1.500</span>
-            </div>
-            <div class="controls">
-              <input type="range" id="slider_KP_STR" min="0" max="10" step="0.05" value="1.5" oninput="syncVal('KP_STR', this.value)">
-              <input type="number" id="num_KP_STR" min="0" max="10" step="0.05" value="1.5" oninput="syncSlider('KP_STR', this.value)">
-              <button class="btn" onclick="saveParam('KP_STRAIGHT', 'KP_STR')">Save</button>
-            </div>
-          </div>
-
-          <div class="param-group">
-            <div class="param-header">
-              <span class="param-name">KD_STRAIGHT (Derivativ)</span>
-              <span class="param-val" id="val_KD_STR">0.500</span>
-            </div>
-            <div class="controls">
-              <input type="range" id="slider_KD_STR" min="0" max="5" step="0.05" value="0.5" oninput="syncVal('KD_STR', this.value)">
-              <input type="number" id="num_KD_STR" min="0" max="5" step="0.05" value="0.5" oninput="syncSlider('KD_STR', this.value)">
-              <button class="btn" onclick="saveParam('KD_STRAIGHT', 'KD_STR')">Save</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Zone 2: Curve & Sharp Turn PID Card -->
-        <div class="card">
-          <div class="card-title">Zone 2: Curb&#x103; / Viraj (Curve PID)</div>
-          
-          <div class="param-group">
-            <div class="param-header">
-              <span class="param-name">KP_CURVE (Propor&#x21B;ional)</span>
-              <span class="param-val" id="val_KP_CRV">3.000</span>
-            </div>
-            <div class="controls">
-              <input type="range" id="slider_KP_CRV" min="0" max="15" step="0.05" value="3.0" oninput="syncVal('KP_CRV', this.value)">
-              <input type="number" id="num_KP_CRV" min="0" max="15" step="0.05" value="3.0" oninput="syncSlider('KP_CRV', this.value)">
-              <button class="btn" onclick="saveParam('KP_CURVE', 'KP_CRV')">Save</button>
-            </div>
-          </div>
-
-          <div class="param-group">
-            <div class="param-header">
-              <span class="param-name">KD_CURVE (Derivativ)</span>
-              <span class="param-val" id="val_KD_CRV">1.200</span>
-            </div>
-            <div class="controls">
-              <input type="range" id="slider_KD_CRV" min="0" max="10" step="0.05" value="1.2" oninput="syncVal('KD_CRV', this.value)">
-              <input type="number" id="num_KD_CRV" min="0" max="10" step="0.05" value="1.2" oninput="syncSlider('KD_CRV', this.value)">
-              <button class="btn" onclick="saveParam('KD_CURVE', 'KD_CRV')">Save</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Zone Transition & Decay Card -->
-        <div class="card">
-          <div class="card-title">Tranzi&#x21B;ie Zon&#x103; &amp; Dec&#x103;dere</div>
-
-          <div class="param-group">
-            <div class="param-header">
-              <span class="param-name">CURVE_THRES (Prag unghi &deg;)</span>
-              <span class="param-val" id="val_CURV_TH">10.0&deg;</span>
-            </div>
-            <div class="controls">
-              <input type="range" id="slider_CURV_TH" min="2" max="30" step="0.5" value="10" oninput="syncVal('CURV_TH', this.value)">
-              <input type="number" id="num_CURV_TH" min="2" max="30" step="0.5" value="10" oninput="syncSlider('CURV_TH', this.value)">
-              <button class="btn" onclick="saveParam('CURVE_THRES', 'CURV_TH')">Save</button>
-            </div>
-          </div>
-
-          <div class="param-group">
-            <div class="param-header">
-              <span class="param-name">SHARP_COEFF (Coeficient vitez&#x103; viraj)</span>
-              <span class="param-val" id="val_SHARP_CF">0.200</span>
-            </div>
-            <div class="controls">
-              <input type="range" id="slider_SHARP_CF" min="0.05" max="1" step="0.05" value="0.2" oninput="syncVal('SHARP_CF', this.value)">
-              <input type="number" id="num_SHARP_CF" min="0.05" max="1" step="0.05" value="0.2" oninput="syncSlider('SHARP_CF', this.value)">
-              <button class="btn" onclick="saveParam('SHARP_COEFF', 'SHARP_CF')">Save</button>
-            </div>
-          </div>
-
-          <div class="param-group">
-            <div class="param-header">
-              <span class="param-name">DECAY_FACTOR (Dec&#x103;dere f&#x103;r&#x103; linie)</span>
-              <span class="param-val" id="val_DECAY">0.900</span>
-            </div>
-            <div class="controls">
-              <input type="range" id="slider_DECAY" min="0.5" max="1" step="0.005" value="0.9" oninput="syncVal('DECAY', this.value)">
-              <input type="number" id="num_DECAY" min="0.5" max="1" step="0.005" value="0.9" oninput="syncSlider('DECAY', this.value)">
-              <button class="btn" onclick="saveParam('DECAY_FACTOR', 'DECAY')">Save</button>
-            </div>
-          </div>
-        </div>
-
-        <button class="btn btn-all" onclick="saveAllPID()">Salveaza Toti Parametrii</button>
+      <button class="estop-btn" onclick="triggerEStop()">EMERGENCY STOP (FRANA URGENTA)</button>
+      <div class="engine-btn-group">
+        <button class="btn-start" onclick="setEngine(1)">START MOTORS (PORNESTE)</button>
+        <button class="btn-stop" onclick="setEngine(0)">STOP MOTORS (OPRESTE)</button>
       </div>
     </div>
+
+    <!-- Dynamic Parameter Cards Grid -->
+    <div id="cards_grid" class="grid">
+      <!-- Generated dynamically from /api/params -->
+    </div>
+
+    <button class="btn-save-all" onclick="saveAllParams()">Save All Parameters to Robot</button>
   </div>
 
-  <div id="toast">Salvat cu succes!</div>
+  <div id="toast">Value Updated!</div>
 
   <script>
-    window.telemetryHistory = [];
-    let lastTelemetryId = 0;
+    let paramList = [];
 
-    const syncVal = (id, val) => {
-      document.getElementById('num_' + id).value = val;
-      document.getElementById('val_' + id).innerText = parseFloat(val).toFixed(3);
-    }
-    const syncSlider = (id, val) => {
-      document.getElementById('slider_' + id).value = val;
-      document.getElementById('val_' + id).innerText = parseFloat(val).toFixed(3);
-    }
-    const syncSpeed = (val) => {
-      document.getElementById('num_SPEED').value = val;
-      document.getElementById('val_SPEED').innerText = parseInt(val) + '%';
-    }
-    const syncSpeedSlider = (val) => {
-      document.getElementById('slider_SPEED').value = val;
-      document.getElementById('val_SPEED').innerText = parseInt(val) + '%';
-    }
-    const showToast = (msg, isDanger) => {
+    function showToast(msg, isDanger = false) {
       const t = document.getElementById('toast');
       t.innerText = msg;
-      if (isDanger) t.classList.add('danger-toast');
-      else t.classList.remove('danger-toast');
+      if (isDanger) t.classList.add('toast-danger');
+      else t.classList.remove('toast-danger');
       t.classList.add('show');
-      setTimeout(function() { t.classList.remove('show'); }, 2200);
+      setTimeout(() => { t.classList.remove('show'); }, 2200);
     }
-    const updateEngineBadge = (running) => {
-      const b = document.getElementById('engine_status');
+
+    function syncControls(key, val, fromInput = false) {
+      const slider = document.getElementById('sl_' + key);
+      const num = document.getElementById('num_' + key);
+      const valDisp = document.getElementById('val_' + key);
+      if (slider && !fromInput) slider.value = val;
+      if (num && fromInput) num.value = val;
+      if (valDisp) valDisp.innerText = parseFloat(val).toFixed(2);
+    }
+
+    function setParam(key) {
+      const num = document.getElementById('num_' + key);
+      if (!num) return;
+      const val = num.value;
+      fetch('/set?param=' + encodeURIComponent(key) + '&val=' + encodeURIComponent(val))
+        .then(r => r.json())
+        .then(d => {
+          showToast('Updated: ' + key + ' = ' + val, false);
+        })
+        .catch(err => {
+          showToast('Error sending ' + key, true);
+        });
+    }
+
+    function setEngine(state) {
+      fetch('/engine?state=' + state)
+        .then(r => r.json())
+        .then(d => {
+          updateEngineUI(state === 1);
+          showToast(state === 1 ? 'Motors STARTED' : 'Motors STOPPED', false);
+        })
+        .catch(err => showToast('Error toggling engine', true));
+    }
+
+    function triggerEStop() {
+      fetch('/estop')
+        .then(r => r.json())
+        .then(d => {
+          updateEngineUI(false);
+          showToast('EMERGENCY STOP TRIGGERED!', true);
+        })
+        .catch(err => showToast('E-STOP Transmitted!', true));
+    }
+
+    function updateEngineUI(running) {
+      const b = document.getElementById('engine_badge');
       if (running) {
-        b.innerText = 'RUNNING (' + document.getElementById('num_SPEED').value + '%)';
+        b.innerText = 'RUNNING';
         b.className = 'status-pill status-on';
       } else {
         b.innerText = 'STOPPED';
         b.className = 'status-pill status-off';
       }
     }
-    const saveParam = (paramName, id) => {
-      const val = document.getElementById('num_' + id).value;
-      fetch('/set?param=' + encodeURIComponent(paramName) + '&val=' + encodeURIComponent(val))
-        .then(function(r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        })
-        .then(function(d) { showToast('Transmis pe NXP: ' + paramName + ' = ' + val, false); })
-        .catch(function(e) { showToast('Eroare salvare ' + paramName, true); });
-    }
-    const saveSpeed = () => {
-      const val = document.getElementById('num_SPEED').value;
-      fetch('/set?param=MOTOR_SPEED&val=' + encodeURIComponent(val))
-        .then(function(r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        })
-        .then(function(d) { showToast('Viteza setata la: ' + val + '%', false); })
-        .catch(function(e) { showToast('Eroare setare viteza!', true); });
-    }
-    const setEngine = (state) => {
-      fetch('/set?param=ENGINE_ENABLED&val=' + state)
-        .then(function(r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        })
-        .then(function(d) {
-          updateEngineBadge(state === 1);
-          showToast(state === 1 ? 'Motoare PORNITE!' : 'Motoare OPRITE', false);
-        })
-        .catch(function(e) { showToast('Eroare comutare motoare!', true); });
-    }
-    const triggerEmergencyStop = () => {
-      fetch('/set?param=EMERGENCY_STOP&val=1')
-        .then(function(r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        })
-        .then(function(d) {
-          updateEngineBadge(false);
-          showToast('EMERGENCY STOP ACTIVAT!', true);
-        })
-        .catch(function(e) { showToast('EMERGENCY STOP TRIMIS!', true); });
-    }
-    const saveAllPID = () => {
-      saveParam('KP_STRAIGHT', 'KP_STR');
-      setTimeout(() => { saveParam('KD_STRAIGHT', 'KD_STR'); }, 150);
-      setTimeout(() => { saveParam('KP_CURVE', 'KP_CRV'); }, 300);
-      setTimeout(() => { saveParam('KD_CURVE', 'KD_CRV'); }, 450);
-      setTimeout(() => { saveParam('CURVE_THRES', 'CURV_TH'); }, 600);
-      setTimeout(() => { saveParam('SHARP_COEFF', 'SHARP_CF'); }, 750);
-      setTimeout(() => { saveParam('DECAY_FACTOR', 'DECAY'); }, 900);
+
+    function saveAllParams() {
+      paramList.forEach((p, idx) => {
+        setTimeout(() => {
+          setParam(p.key);
+        }, idx * 120);
+      });
     }
 
-    /* 2D Pixy Frame & Coordinates Canvas Visualizer */
-    const drawPixyFrame2D = (item) => {
-      const cvs = document.getElementById('pixyCanvas');
-      if (!cvs) return;
-      const ctx = cvs.getContext('2d');
-      const W = cvs.width;   // 390
-      const H = cvs.height;  // 255
-      const scaleX = W / 78.0; // 5
-      const scaleY = H / 51.0; // 5
+    function renderUI(data) {
+      paramList = data.params || [];
+      const grid = document.getElementById('cards_grid');
+      grid.innerHTML = '';
 
-      // Background
-      ctx.fillStyle = '#090d16';
-      ctx.fillRect(0, 0, W, H);
-
-      // Grid lines (every 10 units)
-      ctx.strokeStyle = '#1e293b';
-      ctx.lineWidth = 1;
-      for (let x = 0; x <= 78; x += 10) {
-        ctx.beginPath();
-        ctx.moveTo(x * scaleX, 0);
-        ctx.lineTo(x * scaleX, H);
-        ctx.stroke();
-      }
-      for (let y = 0; y <= 51; y += 10) {
-        ctx.beginPath();
-        ctx.moveTo(0, y * scaleY);
-        ctx.lineTo(W, y * scaleY);
-        ctx.stroke();
-      }
-
-      // Centerline X=39
-      ctx.strokeStyle = '#475569';
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(39 * scaleX, 0);
-      ctx.lineTo(39 * scaleX, H);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Axis labels
-      ctx.fillStyle = '#64748b';
-      ctx.font = '10px monospace';
-      ctx.fillText('TOP (Y=0)', 10, 14);
-      ctx.fillText('VEHICLE (Y=51)', 10, H - 8);
-      ctx.fillText('X=39 (CENTER)', 39 * scaleX - 35, 14);
-
-      // Left Line (x0, y0) -> (x1, y1)
-      const lText = document.getElementById('coord_left_text');
-      if (item.lx0 !== undefined && (item.lx0 > 0 || item.ly0 > 0 || item.lx1 > 0 || item.ly1 > 0)) {
-        const lx0_p = item.lx0 * scaleX;
-        const ly0_p = item.ly0 * scaleY;
-        const lx1_p = item.lx1 * scaleX;
-        const ly1_p = item.ly1 * scaleY;
-
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 3.5;
-        ctx.beginPath();
-        ctx.moveTo(lx0_p, ly0_p);
-        ctx.lineTo(lx1_p, ly1_p);
-        ctx.stroke();
-
-        ctx.fillStyle = '#0284c7';
-        ctx.beginPath(); ctx.arc(lx0_p, ly0_p, 5, 0, 2 * Math.PI); ctx.fill();
-        ctx.fillStyle = '#e0f2fe';
-        ctx.beginPath(); ctx.arc(lx1_p, ly1_p, 5, 0, 2 * Math.PI); ctx.fill();
-
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = 'bold 11px monospace';
-        ctx.fillText('L0(' + item.lx0 + ',' + item.ly0 + ')', lx0_p + 6, ly0_p - 4);
-        ctx.fillText('L1(' + item.lx1 + ',' + item.ly1 + ')', lx1_p + 6, ly1_p - 4);
-
-        if (lText) lText.innerText = 'Linia Stanga: (x0=' + item.lx0 + ', y0=' + item.ly0 + ') -> (x1=' + item.lx1 + ', y1=' + item.ly1 + ')';
-      } else {
-        if (lText) lText.innerText = 'Linia Stanga: [NEDETECTAT / INACTIV]';
-      }
-
-      // Right Line (x0, y0) -> (x1, y1)
-      const rText = document.getElementById('coord_right_text');
-      if (item.rx0 !== undefined && (item.rx0 > 0 || item.ry0 > 0 || item.rx1 > 0 || item.ry1 > 0)) {
-        const rx0_p = item.rx0 * scaleX;
-        const ry0_p = item.ry0 * scaleY;
-        const rx1_p = item.rx1 * scaleX;
-        const ry1_p = item.rx1 * scaleY;
-
-        ctx.strokeStyle = '#22c55e';
-        ctx.lineWidth = 3.5;
-        ctx.beginPath();
-        ctx.moveTo(rx0_p, ry0_p);
-        ctx.lineTo(rx1_p, ry1_p);
-        ctx.stroke();
-
-        ctx.fillStyle = '#15803d';
-        ctx.beginPath(); ctx.arc(rx0_p, ry0_p, 5, 0, 2 * Math.PI); ctx.fill();
-        ctx.fillStyle = '#dcfce7';
-        ctx.beginPath(); ctx.arc(rx1_p, ry1_p, 5, 0, 2 * Math.PI); ctx.fill();
-
-        ctx.fillStyle = '#4ade80';
-        ctx.font = 'bold 11px monospace';
-        ctx.fillText('R0(' + item.rx0 + ',' + item.ry0 + ')', rx0_p + 6, ry0_p - 4);
-        ctx.fillText('R1(' + item.rx1 + ',' + item.ry1 + ')', rx1_p + 6, ry1_p - 4);
-
-        if (rText) rText.innerText = 'Linia Dreapta: (x0=' + item.rx0 + ', y0=' + item.ry0 + ') -> (x1=' + item.rx1 + ', y1=' + item.ry1 + ')';
-      } else {
-        if (rText) rText.innerText = 'Linia Dreapta: [NEDETECTAT / INACTIV]';
-      }
-
-      // Steering Heading Arrow
-      const steerRad = (item.steer * Math.PI) / 180.0;
-      const originX = 39 * scaleX;
-      const originY = H;
-      const arrowLen = 60;
-      const endX = originX + arrowLen * Math.sin(steerRad);
-      const endY = originY - arrowLen * Math.cos(steerRad);
-
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(originX, originY);
-      ctx.lineTo(endX, endY);
-      ctx.stroke();
-
-      ctx.fillStyle = '#f59e0b';
-      ctx.font = 'bold 10px monospace';
-      ctx.fillText('STEER: ' + item.steer.toFixed(1) + ' deg', endX - 25, endY - 6);
-
-      // State Badge
-      const b = document.getElementById('pixy_state_badge');
-      if (b) {
-        let pillClass = 'pill-none';
-        if (item.which === 'BOTH') pillClass = 'pill-both';
-        else if (item.which === 'LEFT' || item.which === 'RIGHT') pillClass = 'pill-single';
-        else if (item.which.indexOf('TURN') !== -1) pillClass = 'pill-turn';
-        b.className = 'line-pill ' + pillClass;
-        b.innerText = item.lines + ' (' + item.which + ')';
-      }
-    }
-
-    /* Steering Angle Time Series Chart */
-    const updateSteerChart = (item) => {
-      const cvs = document.getElementById('steerChartCanvas');
-      if (!cvs || !window.telemetryHistory) return;
-      const ctx = cvs.getContext('2d');
-      const W = cvs.width;
-      const H = cvs.height;
-
-      ctx.fillStyle = '#090d16';
-      ctx.fillRect(0, 0, W, H);
-
-      const zeroY = H / 2;
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, zeroY);
-      ctx.lineTo(W, zeroY);
-      ctx.stroke();
-
-      ctx.fillStyle = '#64748b';
-      ctx.font = '9px monospace';
-      ctx.fillText('+45 deg (RIGHT)', 4, 12);
-      ctx.fillText('0 deg (CENTER)', 4, zeroY - 3);
-      ctx.fillText('-45 deg (LEFT)', 4, H - 4);
-
-      const data = window.telemetryHistory.slice(-60);
-      if (data.length < 2) return;
-
-      const dx = W / 60;
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-
-      data.forEach(function(pt, idx) {
-        const x = idx * dx;
-        const y = zeroY - (pt.steer / 45.0) * (H / 2 - 10);
-        if (idx === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+      // Group parameters by their 'group' property
+      const groups = {};
+      paramList.forEach(p => {
+        if (!groups[p.group]) groups[p.group] = [];
+        groups[p.group].push(p);
       });
 
-      ctx.stroke();
-    }
+      // Render each group as a card
+      for (const [groupName, pGroup] of Object.entries(groups)) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `<div class="card-title">${groupName}</div>`;
 
-    const updateTelemetryUI = (item) => {
-      if (!item) return;
+        pGroup.forEach(p => {
+          const row = document.createElement('div');
+          row.className = 'param-row';
+          row.innerHTML = `
+            <div class="param-meta">
+              <span class="param-name">${p.label} <small style="color:var(--muted);">(${p.key})</small></span>
+              <span class="param-val" id="val_${p.key}">${parseFloat(p.val).toFixed(2)}</span>
+            </div>
+            <div class="param-controls">
+              <input type="range" id="sl_${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.val}"
+                     oninput="syncControls('${p.key}', this.value, true)">
+              <input type="number" id="num_${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.val}"
+                     oninput="syncControls('${p.key}', this.value, false)">
+              <button class="btn-set" onclick="setParam('${p.key}')">Set</button>
+            </div>
+          `;
+          card.appendChild(row);
+        });
 
-      // Update UI cards
-      document.getElementById('metric_vecs').innerText = item.num_vec;
-      if (document.getElementById('metric_horiz_cnt')) {
-        document.getElementById('metric_horiz_cnt').innerText = item.horiz_cnt !== undefined ? item.horiz_cnt : 0;
+        grid.appendChild(card);
       }
 
-      // Update 2D Pixy Canvas & Steering Chart
-      drawPixyFrame2D(item);
-      updateSteerChart(item);
+      updateEngineUI(data.engine_enabled === 1);
     }
 
-    const pollTelemetry = () => {
-      fetch('/api/telemetry?since=' + lastTelemetryId)
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          if (d.new_items && d.new_items.length > 0) {
-            d.new_items.forEach(function(item) {
-              window.telemetryHistory.push(item);
-              if (item.id > lastTelemetryId) {
-                lastTelemetryId = item.id;
-              }
-              updateTelemetryUI(item);
-            });
-          } else if (d.latest) {
-            updateTelemetryUI(d.latest);
+    function pollStatus() {
+      fetch('/api/status')
+        .then(r => r.json())
+        .then(d => {
+          const badge = document.getElementById('comm_badge');
+          if (d.duplex_ok) {
+            badge.innerText = 'UART: FULL-DUPLEX OK';
+            badge.className = 'badge badge-active';
+          } else {
+            badge.innerText = 'UART: TX ONLY (WAITING RX)';
+            badge.className = 'badge';
           }
+          updateEngineUI(d.engine_enabled === 1);
         })
-        .catch(function(e) {})
-        .finally(function() {
-          setTimeout(pollTelemetry, 150);
+        .catch(err => {})
+        .finally(() => {
+          setTimeout(pollStatus, 1500);
         });
     }
 
     window.onload = function() {
       fetch('/api/params')
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          if (d.KP_STRAIGHT !== undefined) { syncVal('KP_STR', d.KP_STRAIGHT); syncSlider('KP_STR', d.KP_STRAIGHT); }
-          if (d.KD_STRAIGHT !== undefined) { syncVal('KD_STR', d.KD_STRAIGHT); syncSlider('KD_STR', d.KD_STRAIGHT); }
-          if (d.KP_CURVE !== undefined) { syncVal('KP_CRV', d.KP_CURVE); syncSlider('KP_CRV', d.KP_CURVE); }
-          if (d.KD_CURVE !== undefined) { syncVal('KD_CRV', d.KD_CURVE); syncSlider('KD_CRV', d.KD_CURVE); }
-          if (d.CURVE_THRES !== undefined) { syncVal('CURV_TH', d.CURVE_THRES); syncSlider('CURV_TH', d.CURVE_THRES); }
-          if (d.SHARP_COEFF !== undefined) { syncVal('SHARP_CF', d.SHARP_COEFF); syncSlider('SHARP_CF', d.SHARP_COEFF); }
-          if (d.MOTOR_SPEED !== undefined) { syncSpeed(d.MOTOR_SPEED); syncSpeedSlider(d.MOTOR_SPEED); }
-          if (d.DECAY_FACTOR !== undefined) { syncVal('DECAY', d.DECAY_FACTOR); syncSlider('DECAY', d.DECAY_FACTOR); }
-          if (d.ENGINE_ENABLED !== undefined) { updateEngineBadge(d.ENGINE_ENABLED === 1); }
-        })
-        .catch(function(e) { console.log('Init fetch error:', e); });
+        .then(r => r.json())
+        .then(renderUI)
+        .catch(e => console.error('Failed to load params:', e));
 
-      pollTelemetry();
-    }
+      pollStatus();
+    };
   </script>
 </body>
 </html>
 )rawliteral";
 
-/* Load persisted PID & Motor params from Preferences */
-void loadStoredParams() {
-    preferences.begin("pid_tuning", false);
-    kp_straight     = preferences.getFloat("KP_STR", 1.50f);
-    kd_straight     = preferences.getFloat("KD_STR", 0.50f);
-    kp_curve        = preferences.getFloat("KP_CRV", 3.00f);
-    kd_curve        = preferences.getFloat("KD_CRV", 1.20f);
-    curve_threshold = preferences.getFloat("CURV_TH", 10.0f);
-    motor_speed     = preferences.getFloat("SPEED", 90.0f);
-    sharp_coeff     = preferences.getFloat("SHARP_CF", 0.20f);
-    decay_factor    = preferences.getFloat("DECAY", 0.90f);
-    engine_enabled  = false; // Always start stopped for safety
-}
-
-/* Transmit current params to NXP over UART */
-void sendParamsToNXP() {
-    Serial2.printf("KP_STRAIGHT = %.4f\n", kp_straight);
-    delay(40);
-    Serial2.printf("KD_STRAIGHT = %.4f\n", kd_straight);
-    delay(40);
-    Serial2.printf("KP_CURVE = %.4f\n", kp_curve);
-    delay(40);
-    Serial2.printf("KD_CURVE = %.4f\n", kd_curve);
-    delay(40);
-    Serial2.printf("CURVE_THRES = %.4f\n", curve_threshold);
-    delay(40);
-    Serial2.printf("MOTOR_SPEED = %.4f\n", motor_speed);
-    delay(40);
-    Serial2.printf("SHARP_COEFF = %.4f\n", sharp_coeff);
-    delay(40);
-    Serial2.printf("DECAY_FACTOR = %.4f\n", decay_factor);
-    delay(40);
-    Serial2.printf("ENGINE_ENABLED = 0\n"); // Ensure NXP starts stopped
-    delay(40);
-}
-
-/* HTTP Handlers */
+/* ========================================================================= */
+/* HTTP Handlers                                                             */
+/* ========================================================================= */
 void handleRoot() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.send(200, "text/html", INDEX_HTML);
@@ -788,77 +456,21 @@ void handleRoot() {
 
 void handleGetParams() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
-    String json = "{";
-    json += "\"KP_STRAIGHT\":" + String(kp_straight, 4) + ",";
-    json += "\"KD_STRAIGHT\":" + String(kd_straight, 4) + ",";
-    json += "\"KP_CURVE\":" + String(kp_curve, 4) + ",";
-    json += "\"KD_CURVE\":" + String(kd_curve, 4) + ",";
-    json += "\"CURVE_THRES\":" + String(curve_threshold, 2) + ",";
-    json += "\"MOTOR_SPEED\":" + String(motor_speed, 1) + ",";
-    json += "\"SHARP_COEFF\":" + String(sharp_coeff, 2) + ",";
-    json += "\"DECAY_FACTOR\":" + String(decay_factor, 4) + ",";
-    json += "\"ENGINE_ENABLED\":" + String(engine_enabled ? 1 : 0);
-    json += "}";
-    server.send(200, "application/json", json);
-}
+    String json = "{\"engine_enabled\":";
+    json += String(engine_enabled ? 1 : 0);
+    json += ",\"params\":[";
 
-void handleGetTelemetry() {
-    server.sendHeader("Access-Control-Allow-Origin", "*");
-    unsigned long sinceId = 0;
-    if (server.hasArg("since")) {
-        sinceId = (unsigned long)server.arg("since").toInt();
-    }
-
-    String json = "{\"latest\":";
-    if (telemetryCount == 0) {
-        json += "null";
-    } else {
-        int latestIdx = (telemetryHead - 1 + TELEMETRY_BUFFER_SIZE) % TELEMETRY_BUFFER_SIZE;
-        TelemetryFrame &f = telemetryRingBuffer[latestIdx];
-        json += "{\"id\":" + String(f.id);
-        json += ",\"ts\":" + String(f.timestamp);
-        json += ",\"lines\":" + String(f.lineCount);
-        json += ",\"which\":\"" + String(f.whichLines) + "\"";
-        json += ",\"num_vec\":" + String(f.numVectors);
-        json += ",\"horiz_cnt\":" + String(f.horizVectorCount);
-        json += ",\"steer\":" + String(f.steeringAngle, 2);
-        json += ",\"lx0\":" + String(f.lx0);
-        json += ",\"ly0\":" + String(f.ly0);
-        json += ",\"lx1\":" + String(f.lx1);
-        json += ",\"ly1\":" + String(f.ly1);
-        json += ",\"rx0\":" + String(f.rx0);
-        json += ",\"ry0\":" + String(f.ry0);
-        json += ",\"rx1\":" + String(f.rx1);
-        json += ",\"ry1\":" + String(f.ry1);
+    for (size_t i = 0; i < NUM_PARAMS; i++) {
+        if (i > 0) json += ",";
+        json += "{";
+        json += "\"key\":\"" + String(params[i].key) + "\",";
+        json += "\"label\":\"" + String(params[i].label) + "\",";
+        json += "\"group\":\"" + String(params[i].group) + "\",";
+        json += "\"min\":" + String(params[i].minVal, 2) + ",";
+        json += "\"max\":" + String(params[i].maxVal, 2) + ",";
+        json += "\"step\":" + String(params[i].step, 2) + ",";
+        json += "\"val\":" + String(params[i].currentVal, 4);
         json += "}";
-    }
-
-    json += ",\"new_items\":[";
-    bool first = true;
-    int startIdx = (telemetryCount < TELEMETRY_BUFFER_SIZE) ? 0 : telemetryHead;
-    for (int i = 0; i < telemetryCount; i++) {
-        int idx = (startIdx + i) % TELEMETRY_BUFFER_SIZE;
-        TelemetryFrame &f = telemetryRingBuffer[idx];
-        if (f.id > sinceId) {
-            if (!first) json += ",";
-            first = false;
-            json += "{\"id\":" + String(f.id);
-            json += ",\"ts\":" + String(f.timestamp);
-            json += ",\"lines\":" + String(f.lineCount);
-            json += ",\"which\":\"" + String(f.whichLines) + "\"";
-            json += ",\"num_vec\":" + String(f.numVectors);
-            json += ",\"horiz_cnt\":" + String(f.horizVectorCount);
-            json += ",\"steer\":" + String(f.steeringAngle, 2);
-            json += ",\"lx0\":" + String(f.lx0);
-            json += ",\"ly0\":" + String(f.ly0);
-            json += ",\"lx1\":" + String(f.lx1);
-            json += ",\"ly1\":" + String(f.ly1);
-            json += ",\"rx0\":" + String(f.rx0);
-            json += ",\"ry0\":" + String(f.ry0);
-            json += ",\"rx1\":" + String(f.rx1);
-            json += ",\"ry1\":" + String(f.ry1);
-            json += "}";
-        }
     }
     json += "]}";
 
@@ -867,118 +479,115 @@ void handleGetTelemetry() {
 
 void handleSetParam() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
-
     if (!server.hasArg("param") || !server.hasArg("val")) {
-        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing arguments\"}");
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing param or val\"}");
         return;
     }
-    String param = server.arg("param");
+
+    String paramName = server.arg("param");
     float val = server.arg("val").toFloat();
 
-    if (param == "KP_STRAIGHT") {
-        kp_straight = val;
-        preferences.putFloat("KP_STR", val);
-    } else if (param == "KD_STRAIGHT") {
-        kd_straight = val;
-        preferences.putFloat("KD_STR", val);
-    } else if (param == "KP_CURVE") {
-        kp_curve = val;
-        preferences.putFloat("KP_CRV", val);
-    } else if (param == "KD_CURVE") {
-        kd_curve = val;
-        preferences.putFloat("KD_CRV", val);
-    } else if (param == "CURVE_THRES") {
-        curve_threshold = val;
-        preferences.putFloat("CURV_TH", val);
-    } else if (param == "MOTOR_SPEED") {
-        motor_speed = val;
-        preferences.putFloat("SPEED", val);
-    } else if (param == "SHARP_COEFF") {
-        sharp_coeff = val;
-        preferences.putFloat("SHARP_CF", val);
-    } else if (param == "DECAY_FACTOR") {
-        decay_factor = val;
-        preferences.putFloat("DECAY", val);
-    } else if (param == "ENGINE_ENABLED") {
-        engine_enabled = (val > 0.5f);
-    } else if (param == "EMERGENCY_STOP") {
-        engine_enabled = false;
+    int foundIdx = -1;
+    for (size_t i = 0; i < NUM_PARAMS; i++) {
+        if (paramName == params[i].key) {
+            params[i].currentVal = val;
+            foundIdx = (int)i;
+            break;
+        }
     }
 
-    // Format message to NXP board: "NUME_PARAMETRU = VAL\n"
-    String msg = param + " = " + String(val, 4) + "\n";
-    Serial2.print(msg);
-    Serial2.flush();
-
-    Serial.print("Transmis catre NXP: ");
-    Serial.print(msg);
-
-    String jsonResponse = "{\"status\":\"ok\",\"param\":\"" + param + "\",\"val\":" + String(val, 4) + "}";
-    server.send(200, "application/json", jsonResponse);
+    if (foundIdx != -1) {
+        saveStoredParam(foundIdx);
+        sendParamToFRDM(paramName.c_str(), val);
+        server.send(200, "application/json", "{\"status\":\"ok\",\"param\":\"" + paramName + "\",\"val\":" + String(val, 4) + "}");
+    } else {
+        server.send(404, "application/json", "{\"status\":\"error\",\"message\":\"Unknown parameter\"}");
+    }
 }
 
-void setup() {
-    delay(2000);
-    Serial.begin(115200);                        // USB Serial Debug
-    Serial2.begin(115200, SERIAL_8N1, 16, 17);  // RX=GPIO16 (from NXP P3_3 TX), TX=GPIO17 (to NXP P3_2 RX)
+void handleEngine() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    int state = server.hasArg("state") ? server.arg("state").toInt() : 0;
+    engine_enabled = (state == 1);
 
-    Serial.println("Pornire ESP32 PID & Engine Control Web Server...");
+    Serial2.printf("ENGINE_ENABLED=%d\n", engine_enabled ? 1 : 0);
+    Serial2.flush();
+    Serial.printf("[ESP32 TX -> FRDM] ENGINE_ENABLED=%d\n", engine_enabled ? 1 : 0);
+
+    server.send(200, "application/json", "{\"status\":\"ok\",\"engine_enabled\":" + String(engine_enabled ? 1 : 0) + "}");
+}
+
+void handleEStop() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    engine_enabled = false;
+
+    Serial2.print("EMERGENCY_STOP=1\n");
+    Serial2.flush();
+    Serial.println("[ESP32 TX -> FRDM] EMERGENCY_STOP=1");
+
+    server.send(200, "application/json", "{\"status\":\"ok\",\"estop\":1}");
+}
+
+void handleStatus() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    bool duplexOk = (lastPongReceived > 0 && (pingSequence - lastPongReceived) <= 2);
+
+    String json = "{";
+    json += "\"engine_enabled\":" + String(engine_enabled ? 1 : 0) + ",";
+    json += "\"duplex_ok\":" + String(duplexOk ? "true" : "false") + ",";
+    json += "\"rx_packets\":" + String(rxPacketCount) + ",";
+    json += "\"last_rx\":\"" + lastRxMessage + "\"";
+    json += "}";
+
+    server.send(200, "application/json", json);
+}
+
+/* ========================================================================= */
+/* Arduino Setup & Main Loop                                                 */
+/* ========================================================================= */
+void setup() {
+    delay(1500);
+    Serial.begin(115200);                        // USB Serial Debug Console
+    Serial2.begin(115200, SERIAL_8N1, 16, 17);  // RX=GPIO16, TX=GPIO17 to FRDM P3_3/P3_2
+
+    Serial.println("\n==================================================");
+    Serial.println("   NXP CUP - ESP32 Modular Parameter Tuning Server ");
+    Serial.println("==================================================");
 
     loadStoredParams();
 
-    /* Configure ESP32 as Access Point */
+    // Start Wi-Fi Access Point
     WiFi.mode(WIFI_AP);
     if (WiFi.softAP(AP_SSID, AP_PASS)) {
-        Serial.print("Access Point pornit cu SSID: ");
-        Serial.println(AP_SSID);
-        Serial.print("IP Server Web: http://");
-        Serial.println(WiFi.softAPIP());
+        Serial.printf("[ESP32] Access Point created! SSID: %s\n", AP_SSID);
+        Serial.printf("[ESP32] Web Dashboard URL: http://%s\n", WiFi.softAPIP().toString().c_str());
     } else {
-        Serial.println("Eroare la pornirea Access Point-ului!");
+        Serial.println("[ESP32 ERROR] Failed to start Access Point!");
     }
 
-    /* Initialize mDNS */
+    // Start mDNS Responder
     if (MDNS.begin(MDNS_NAME)) {
-        Serial.print("mDNS responder pornit: http://");
-        Serial.print(MDNS_NAME);
-        Serial.println(".local");
+        Serial.printf("[ESP32] mDNS Responder active: http://%s.local\n", MDNS_NAME);
         MDNS.addService("http", "tcp", 80);
-    } else {
-        Serial.println("Eroare la pornirea mDNS!");
     }
 
-    /* Setup HTTP Server Routes */
+    // Configure Web Server HTTP Routes
     server.on("/", handleRoot);
     server.on("/api/params", handleGetParams);
-    server.on("/api/telemetry", handleGetTelemetry);
+    server.on("/api/status", handleStatus);
     server.on("/set", handleSetParam);
+    server.on("/engine", handleEngine);
+    server.on("/estop", handleEStop);
 
     server.begin();
-    Serial.println("Server Web HTTP pornit pe portul 80!");
+    Serial.println("[ESP32] HTTP Web Server running on port 80.\n");
 
-    // Trimitere parametri initiali catre NXP pe UART
-    sendParamsToNXP();
-}
-
-/* Send a test ping to FRDM every 2 seconds to verify bidirectional communication */
-void sendHeartbeat() {
-    static unsigned long lastHeartbeatTime = 0;
-    static unsigned long hbSeq = 0;
-    unsigned long now = millis();
-    if (now - lastHeartbeatTime >= 2000UL) {
-        lastHeartbeatTime = now;
-        hbSeq++;
-        Serial2.print("PING=" + String(hbSeq) + "\n");
-        Serial2.flush();
-        Serial.println("[ESP32 DUPLEX] TX -> FRDM: PING #" + String(hbSeq));
-    }
+    // Transmit all saved parameters to FRDM board on startup
+    syncAllParamsToFRDM();
 }
 
 void loop() {
     server.handleClient();
-
     sendHeartbeat();
-
-    /* Process incoming UART data from NXP board */
     processSerial2Input();
 }

@@ -46,7 +46,9 @@ static status_t pixy_send(pixy_t *cam, const uint8_t *cmd, size_t len)
     };
     status_t s = LPI2C_MasterTransferEDMA(cam->instance, &cam->edmaHandle, &xfer);
     if (s != kStatus_Success) return s;
-    while (!transferDone) {}
+    uint32_t timeout = 100000U;
+    while (!transferDone && --timeout > 0U) {}
+    if (timeout == 0U) return kStatus_Fail;
     return kStatus_Success;
 }
 
@@ -63,7 +65,9 @@ static status_t pixy_recv(pixy_t *cam, uint8_t *buf, size_t len)
     };
     status_t s = LPI2C_MasterTransferEDMA(cam->instance, &cam->edmaHandle, &xfer);
     if (s != kStatus_Success) return s;
-    while (!transferDone) {}
+    uint32_t timeout = 100000U;
+    while (!transferDone && --timeout > 0U) {}
+    if (timeout == 0U) return kStatus_Fail;
     return kStatus_Success;
 }
 

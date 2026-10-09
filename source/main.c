@@ -12,7 +12,12 @@
 #include "servo.h"
 #include "esc.h"
 #include "detection.h"
+#include "wifi.h"
 #include <math.h>
+
+/* Set to 1 to run the isolated ESP32 <-> FRDM UART test (bypasses camera & motors).
+ * Set to 0 to run the complete robot competition software with live Wi-Fi parameter tuning. */
+#define TEST_ESP_UART_STANDALONE 0
 
 #define MAX_VECTORS 10
 
@@ -43,12 +48,88 @@ static inline double compute_variable_pid(double error, double *previous_error, 
 
 int main(void)
 {
-    uint16_t vectors[MAX_VECTORS * 4];
-    size_t   num_vectors;
-
     BOARD_InitHardware();
     BOARD_InitBootPins();
     BOARD_InitBootPeripherals();
+
+#if TEST_ESP_UART_STANDALONE
+    PRINTF("\r\n======================================================\r\n");
+    PRINTF("  FRDM-MCXN947 Minimal UART Sniffer & Connectivity Test\r\n");
+    PRINTF("  Pins: P3_2 (J9[20] / J7[8]) = RX | P3_3 (J9[19] / J7[6]) = TX @ 115200\r\n");
+    PRINTF("  LED: Green LED (P0_27) toggles on EVERY byte received\r\n");
+    PRINTF("  Listening for incoming raw bytes from ESP32...\r\n");
+    PRINTF("======================================================\r\n\r\n");
+
+    /* Disable interrupts so sniffer directly reads the hardware register */
+    DisableIRQ(LP_FLEXCOMM7_IRQn);
+    LPUART_DisableInterrupts(LP_FLEXCOMM7_PERIPHERAL, (uint32_t)kLPUART_AllInterruptEnable);
+
+    uint32_t byte_count = 0U;
+    uint32_t heartbeat_counter = 0U;
+
+    while (1)
+    {
+        uint32_t status = LPUART_GetStatusFlags(LP_FLEXCOMM7_PERIPHERAL);
+
+        /* Error detection & reporting */
+        if (status & (kLPUART_RxOverrunFlag | kLPUART_FramingErrorFlag | kLPUART_NoiseErrorFlag | kLPUART_ParityErrorFlag))
+        {
+            PRINTF("[UART ERROR] STAT=0x%08lX -> FE(Framing)=%d | OR(Overrun)=%d | NF(Noise)=%d | PF(Parity)=%d\r\n",
+                   (unsigned long)status,
+                   (status & kLPUART_FramingErrorFlag) ? 1 : 0,
+                   (status & kLPUART_RxOverrunFlag) ? 1 : 0,
+                   (status & kLPUART_NoiseErrorFlag) ? 1 : 0,
+                   (status & kLPUART_ParityErrorFlag) ? 1 : 0);
+
+            LPUART_ClearStatusFlags(LP_FLEXCOMM7_PERIPHERAL,
+                                    kLPUART_RxOverrunFlag | kLPUART_FramingErrorFlag |
+                                    kLPUART_NoiseErrorFlag | kLPUART_ParityErrorFlag);
+        }
+
+        /* Check if byte arrived in hardware register */
+        if ((status & kLPUART_RxDataRegFullFlag) != 0U)
+        {
+            uint8_t ch = LPUART_ReadByte(LP_FLEXCOMM7_PERIPHERAL);
+            byte_count++;
+
+            /* Toggle onboard Green LED (P0_27) */
+            GPIO_PortToggle(BOARD_INITPINS_LED_GREEN_GPIO, BOARD_INITPINS_LED_GREEN_PIN_MASK);
+
+            if (ch >= 32U && ch <= 126U)
+            {
+                PRINTF("[RX SUCCESS #%lu] Byte: '%c' (0x%02X)\r\n",
+                       (unsigned long)byte_count, (char)ch, (unsigned int)ch);
+            }
+            else if (ch == '\n')
+            {
+                PRINTF("[RX SUCCESS #%lu] Byte: '\\n' (0x0A) [NEWLINE]\r\n", (unsigned long)byte_count);
+            }
+            else if (ch == '\r')
+            {
+                PRINTF("[RX SUCCESS #%lu] Byte: '\\r' (0x0D)\r\n", (unsigned long)byte_count);
+            }
+            else
+            {
+                PRINTF("[RX SUCCESS #%lu] Byte: (0x%02X)\r\n", (unsigned long)byte_count, (unsigned int)ch);
+            }
+
+            /* Echo byte back out on TX (P3_3) so ESP32 receives confirmation */
+            while ((LPUART_GetStatusFlags(LP_FLEXCOMM7_PERIPHERAL) & kLPUART_TxDataRegEmptyFlag) == 0U) {}
+            LPUART_WriteByte(LP_FLEXCOMM7_PERIPHERAL, ch);
+        }
+
+        /* Periodic heartbeat every ~2 seconds */
+        if (++heartbeat_counter >= 3000000U)
+        {
+            heartbeat_counter = 0U;
+            PRINTF("[SNIFFER ACTIVE] Bytes RX so far: %lu | STAT: 0x%08lX\r\n",
+                   (unsigned long)byte_count,
+                   (unsigned long)LPUART_GetStatusFlags(LP_FLEXCOMM7_PERIPHERAL));
+        }
+    }
+#else
+    uint16_t vectors[MAX_VECTORS * 4];
+    size_t   num_vectors;
 
     /* Initialize H-bridge with bootcampWorkspace pins for new car */
     HbridgeInit(&g_hbridge,
@@ -212,4 +293,5 @@ int main(void)
             SDK_DelayAtLeastUs(16000U, SystemCoreClock);
         }
     }
+#endif
 }

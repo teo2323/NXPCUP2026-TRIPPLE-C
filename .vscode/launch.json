@@ -6,7 +6,7 @@
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "executable": {
-        "elf": ""
+        "elf": "${workspaceFolder}/Debug/nxpcup_official.axf"
       },
       "stopAtSymbol": "main",
       "probeSerialNumber": "",
