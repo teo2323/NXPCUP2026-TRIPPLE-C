@@ -215,6 +215,26 @@ void BOARD_InitPins(void)
 
                      /* Input Buffer Enable: Enables. */
                      | PORT_PCR_IBE(PCR_IBE_ibe1));
+
+    /* PORT3_2 (pin D15) is configured as FC7_P0 (ESP32 UART RX) */
+    PORT_SetPinMux(BOARD_INITPINS_ESP_RX_PORT, BOARD_INITPINS_ESP_RX_PIN, kPORT_MuxAlt2);
+
+    PORT3->PCR[2] = ((PORT3->PCR[2] &
+                      /* Mask bits to zero which are setting */
+                      (~(PORT_PCR_IBE_MASK)))
+
+                     /* Input Buffer Enable: Enables. */
+                     | PORT_PCR_IBE(PCR_IBE_ibe1));
+
+    /* PORT3_3 (pin D16) is configured as FC7_P1 (ESP32 UART TX) */
+    PORT_SetPinMux(BOARD_INITPINS_ESP_TX_PORT, BOARD_INITPINS_ESP_TX_PIN, kPORT_MuxAlt2);
+
+    PORT3->PCR[3] = ((PORT3->PCR[3] &
+                      /* Mask bits to zero which are setting */
+                      (~(PORT_PCR_IBE_MASK)))
+
+                     /* Input Buffer Enable: Enables. */
+                     | PORT_PCR_IBE(PCR_IBE_ibe1));
 }
 /***********************************************************************************************************************
  * EOF

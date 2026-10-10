@@ -27,8 +27,20 @@ void BOARD_InitBootPins(void);
 
 #define PCR_IBE_ibe1 0x01u /*!<@brief Input Buffer Enable: Enables */
 
-/*! @name PORT0_2 (coord B16), P0_2/SWO/J23[6]/D16[4]
+/*! @name PORT3_2 (coord D15), P3_2/J9[20]/J7[8] — ESP32 UART RX
   @{ */
+#define BOARD_INITPINS_ESP_RX_PORT PORT3               /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_ESP_RX_PIN  2U                  /*!<@brief PORT pin number */
+#define BOARD_INITPINS_ESP_RX_PIN_MASK (1U << 2U)      /*!<@brief PORT pin mask */
+                                                        /* @} */
+
+/*! @name PORT3_3 (coord D16), P3_3/J9[19]/SJ12[1] — ESP32 UART TX
+  @{ */
+#define BOARD_INITPINS_ESP_TX_PORT PORT3               /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_ESP_TX_PIN  3U                  /*!<@brief PORT pin number */
+#define BOARD_INITPINS_ESP_TX_PIN_MASK (1U << 3U)      /*!<@brief PORT pin mask */
+                                                        /* @} */
+
 
 /* Symbols to be used with PORT driver */
 #define BOARD_INITPINS_DEBUG_SWD_SWO_PORT PORT0               /*!<@brief PORT peripheral base pointer */

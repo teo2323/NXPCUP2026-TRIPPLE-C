@@ -12,6 +12,7 @@
 #include "servo.h"
 #include "esc.h"
 #include "detection.h"
+#include "wifi.h"
 #include <math.h>
 
 #define MAX_VECTORS 10
@@ -111,10 +112,13 @@ int main(void)
     pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
     pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active mode
 
-    /* Initial base drive speed and straight steering */
-    HbridgeSpeed(&g_hbridge, 0, 0);
-    //Steer(0 + STEERING_OFFSET);
-    TestServo();
+    /* Initialize WiFi UART (LP_FLEXCOMM7) — enables RX interrupt and ring buffer */
+    Wifi_Init();
+
+    /* Initial base drive speed: respect engine-enabled state from ESP32 */
+    int16_t initial_speed = g_engine_enabled ? SPEED_LEFT : 0;
+    HbridgeSpeed(&g_hbridge, initial_speed, initial_speed);
+    Steer(0 + STEERING_OFFSET);
 
     double   last_steering_angle   = 0.0;
     double   previous_error        = 0.0;   // D term: stores last frame's error
@@ -123,115 +127,176 @@ int main(void)
     uint8_t  no_line_lost_frames   = 0;     // Counter for consecutive frames with no detected track lines
     bool     motors_stopped        = false; // State flag: true when no lines detected for > NO_LINE_MAX_LOST_FRAMES frames
 
-    // while (1)
-    // {
-    //     if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
+    while (1)
+    {
+        Wifi_Process_Rx();
 
-    //         dual_line_detection_result_t det;
-    //         detection_process_dual_lines(vectors, num_vectors, &det);
+        /* Periodic Dual-Duplex Communication Test between FRDM and ESP32 (~1 Hz) */
+        static uint32_t comm_test_tick = 0U;
+        static uint32_t ping_seq = 0U;
+        if (++comm_test_tick >= 60U)
+        {
+            comm_test_tick = 0U;
+            ping_seq++;
+            Wifi_SendPing(ping_seq);
 
-    //         /* Display line detection status and coordinates */
-    //         if (det.left_line_present) {
-    //             PRINTF("Left Line: DETECTED  | Start: (%u, %u), End: (%u, %u)\r\n",
-    //                    det.left_line.vector.x0, det.left_line.vector.y0,
-    //                    det.left_line.vector.x1, det.left_line.vector.y1);
-    //         } else {
-    //             PRINTF("Left Line: NOT DETECTED\r\n");
-    //         }
+            PRINTF("\r\n======================================================\r\n");
+            PRINTF(" [DUAL-DUPLEX COMM TEST] FRDM <-> ESP32 (LPUART7 @ 115200)\r\n");
+            PRINTF("  FRDM TX -> ESP32: %lu packets sent (Sent PING #%lu)\r\n",
+                   (unsigned long)g_wifi_tx_count, (unsigned long)ping_seq);
+            PRINTF("  FRDM RX <- ESP32: %lu packets received\r\n",
+                   (unsigned long)g_wifi_rx_count);
+            if (g_wifi_rx_count > 0U) {
+                PRINTF("  >>> STATUS: [FULL-DUPLEX ACTIVE - BIDIRECTIONAL OK] <<<\r\n");
+                PRINTF("  Last Msg from ESP32: \"%s\"\r\n", g_wifi_last_rx_cmd);
+            } else {
+                PRINTF("  >>> STATUS: [WAITING FOR ESP32 RX - TX ONLY] <<<\r\n");
+                PRINTF("  Check: ESP32 TX (GPIO17) -> FRDM RX (P3_2), Shared GND\r\n");
+            }
+            PRINTF("======================================================\r\n\r\n");
+        }
 
-    //         if (det.right_line_present) {
-    //             PRINTF("Right Line: DETECTED | Start: (%u, %u), End: (%u, %u)\r\n",
-    //                    det.right_line.vector.x0, det.right_line.vector.y0,
-    //                    det.right_line.vector.x1, det.right_line.vector.y1);
-    //         } else {
-    //             PRINTF("Right Line: NOT DETECTED\r\n");
-    //         }
+        if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
+            Wifi_Process_Rx();
 
-    //         bool lines_detected = (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present));
+            dual_line_detection_result_t det;
+            detection_process_dual_lines(vectors, num_vectors, &det);
 
-    //         if (lines_detected) {
-    //             no_line_lost_frames   = 0;
-    //             motors_stopped        = false;
+            /* Display line detection status and coordinates */
+            if (det.left_line_present) {
+                PRINTF("Left Line: DETECTED  | Start: (%u, %u), End: (%u, %u)\r\n",
+                       det.left_line.vector.x0, det.left_line.vector.y0,
+                       det.left_line.vector.x1, det.left_line.vector.y1);
+            } else {
+                PRINTF("Left Line: NOT DETECTED\r\n");
+            }
 
-    //             /* 2-Zone Variable PID steering control with hysteresis */
-    //             double steer_angle = compute_variable_pid(det.steering_angle,
-    //                                                       det.curve_angle,
-    //                                                       &previous_error,
-    //                                                       last_steering_angle,
-    //                                                       &is_in_curve,
-    //                                                       &straight_frames);
+            if (det.right_line_present) {
+                PRINTF("Right Line: DETECTED | Start: (%u, %u), End: (%u, %u)\r\n",
+                       det.right_line.vector.x0, det.right_line.vector.y0,
+                       det.right_line.vector.x1, det.right_line.vector.y1);
+            } else {
+                PRINTF("Right Line: NOT DETECTED\r\n");
+            }
 
-    //             Steer(steer_angle + STEERING_OFFSET);
-    //             last_steering_angle = steer_angle;
-    //         }
-    //         // else {
-    //         //     /* 0 track lines detected -> search for horizontal turn-track fallback vector */
-    //         //     turn_track_result_t turn;
-    //         //     if (detection_detect_turn_track(vectors, num_vectors, &turn)) {
-    //         //         /* Horizontal fallback vector indicates a turn in progress */
-    //         //         double steer_angle = compute_variable_pid(turn.steering_angle, turn.steering_angle, &previous_error, last_steering_angle, &is_in_curve, &straight_frames);
-    //         //         Steer(steer_angle + STEERING_OFFSET);
-    //         //         last_steering_angle = steer_angle;
-    //         //     }
-    //         // }
-    //         else {
-    //             /* Case: No track lines detected -> check if lost frames exceeded threshold */
-    //             no_line_lost_frames++;
-    //             if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
-    //                 motors_stopped = true;
-    //             }
+            bool lines_detected = (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present));
 
-    //             /* No vectors detected -> gently decay angle using DECAY_FACTOR */
-    //             last_steering_angle *= DECAY_FACTOR;
-    //             if (fabs(last_steering_angle) < 1.0) {
-    //                 last_steering_angle = 0.0;
-    //                 previous_error      = 0.0;
-    //                 is_in_curve         = false;
-    //                 straight_frames     = 0;
-    //             }
-    //             Steer(last_steering_angle + STEERING_OFFSET);
-    //         }
+            if (lines_detected) {
+                no_line_lost_frames   = 0;
+                motors_stopped        = false;
 
-    //         if (motors_stopped) {
-    //             /* When no track lines are detected for more than NO_LINE_MAX_LOST_FRAMES frames, stop the motors */
-    //             HbridgeSpeed(&g_hbridge, 0, 0);
-    //         } else {
-    //             int16_t current_speed_left, current_speed_right;
+                /* 2-Zone Variable PID steering control with hysteresis */
+                double steer_angle = compute_variable_pid(det.steering_angle,
+                                                          det.curve_angle,
+                                                          &previous_error,
+                                                          last_steering_angle,
+                                                          &is_in_curve,
+                                                          &straight_frames);
 
-    //             if (is_in_curve) {
-    //                 /* Differential drive with corner braking (applied only in curve):
-    //                  * 1) corner_brake slows BOTH wheels proportionally to turn sharpness
-    //                  * 2) diff splits inner/outer: outer gets a boost, inner brakes harder
-    //                  * Result: outer stays ~80-90 in curves, inner drops aggressively */
-    //                 double abs_angle    = fabs(last_steering_angle);
-    //                 double corner_brake = abs_angle * CORNER_BRAKE_COEFF;
-    //                 double diff         = abs_angle * DIFF_SPEED_COEFF;
+                Steer(steer_angle + STEERING_OFFSET);
+                last_steering_angle = steer_angle;
+            }
+            else {
+                /* Case: No track lines detected -> check if lost frames exceeded threshold */
+                no_line_lost_frames++;
+                if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
+                    motors_stopped = true;
+                }
 
-    //                 if (last_steering_angle >= 0.0) {
-    //                     /* Right turn: left is outer, right is inner */
-    //                     current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake + diff);
-    //                     current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake - diff);
-    //                 } else {
-    //                     /* Left turn: right is outer, left is inner */
-    //                     current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake - diff);
-    //                     current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake + diff);
-    //                 }
-    //             } else {
-    //                 /* Straight section: maintain full symmetric base speed with no differential */
-    //                 current_speed_left  = SPEED_LEFT;
-    //                 current_speed_right = SPEED_RIGHT;
-    //             }
+                /* No vectors detected -> gently decay angle using DECAY_FACTOR */
+                last_steering_angle *= DECAY_FACTOR;
+                if (fabs(last_steering_angle) < 1.0) {
+                    last_steering_angle = 0.0;
+                    previous_error      = 0.0;
+                    is_in_curve         = false;
+                    straight_frames     = 0;
+                }
+                Steer(last_steering_angle + STEERING_OFFSET);
+            }
 
-    //             HbridgeSpeed(&g_hbridge, current_speed_left, current_speed_right);
-    //         }
-    //     }
-    //     else {
-    //         /* Camera read failed: check if lost frames exceeded threshold */
-    //         no_line_lost_frames++;
-    //         if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
-    //             motors_stopped = true;
-    //             HbridgeSpeed(&g_hbridge, 0, 0);
-    //         }
-    //     }
-    // }
+            if (motors_stopped || !g_engine_enabled) {
+                /* When no track lines are detected or engine is disabled, stop the motors */
+                HbridgeSpeed(&g_hbridge, 0, 0);
+            } else {
+                int16_t current_speed_left, current_speed_right;
+
+                if (is_in_curve) {
+                    /* Differential drive with corner braking (applied only in curve):
+                     * 1) corner_brake slows BOTH wheels proportionally to turn sharpness
+                     * 2) diff splits inner/outer: outer gets a boost, inner brakes harder
+                     * Result: outer stays ~80-90 in curves, inner drops aggressively */
+                    double abs_angle    = fabs(last_steering_angle);
+                    double corner_brake = abs_angle * CORNER_BRAKE_COEFF;
+                    double diff         = abs_angle * DIFF_SPEED_COEFF;
+
+                    if (last_steering_angle >= 0.0) {
+                        /* Right turn: left is outer, right is inner */
+                        current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake + diff);
+                        current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake - diff);
+                    } else {
+                        /* Left turn: right is outer, left is inner */
+                        current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake - diff);
+                        current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake + diff);
+                    }
+                } else {
+                    /* Straight section: maintain full symmetric base speed with no differential */
+                    current_speed_left  = SPEED_LEFT;
+                    current_speed_right = SPEED_RIGHT;
+                }
+
+                HbridgeSpeed(&g_hbridge, current_speed_left, current_speed_right);
+            }
+
+            /* Send Telemetry to ESP32 over UART at ~10 Hz rate (every 6 camera frames at 60FPS) */
+            static uint32_t telemetry_tick = 0U;
+            if (++telemetry_tick >= 6U)
+            {
+                telemetry_tick = 0U;
+
+                uint8_t line_cnt = 0U;
+                const char *which_str = "NONE";
+
+                if (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present))
+                {
+                    if (det.both_lines_present) {
+                        line_cnt = 2U;
+                        which_str = "BOTH";
+                    } else if (det.left_line_present) {
+                        line_cnt = 1U;
+                        which_str = "LEFT";
+                    } else {
+                        line_cnt = 1U;
+                        which_str = "RIGHT";
+                    }
+                }
+
+                int lx0 = 0, ly0 = 0, lx1 = 0, ly1 = 0;
+                int rx0 = 0, ry0 = 0, rx1 = 0, ry1 = 0;
+
+                if (det.left_line_present) {
+                    lx0 = (int)det.left_line.vector.x0;
+                    ly0 = (int)det.left_line.vector.y0;
+                    lx1 = (int)det.left_line.vector.x1;
+                    ly1 = (int)det.left_line.vector.y1;
+                }
+                if (det.right_line_present) {
+                    rx0 = (int)det.right_line.vector.x0;
+                    ry0 = (int)det.right_line.vector.y0;
+                    rx1 = (int)det.right_line.vector.x1;
+                    ry1 = (int)det.right_line.vector.y1;
+                }
+
+                Wifi_SendTelemetry(line_cnt, which_str, num_vectors, 0U, last_steering_angle, lx0, ly0, lx1, ly1, rx0, ry0, rx1, ry1);
+            }
+        }
+        else {
+            /* Camera read failed: check if lost frames exceeded threshold */
+            no_line_lost_frames++;
+            if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
+                motors_stopped = true;
+                HbridgeSpeed(&g_hbridge, 0, 0);
+            }
+            SDK_DelayAtLeastUs(16000U, SystemCoreClock);
+        }
+    }
 }

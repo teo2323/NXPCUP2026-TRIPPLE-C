@@ -11,7 +11,8 @@ C_SRCS += \
 ../source/pixy.c \
 ../source/semihost_hardfault.c \
 ../source/servo.c \
-../source/simple_movement.c 
+../source/simple_movement.c \
+../source/wifi.c 
 
 C_DEPS += \
 ./source/detection.d \
@@ -21,7 +22,8 @@ C_DEPS += \
 ./source/pixy.d \
 ./source/semihost_hardfault.d \
 ./source/servo.d \
-./source/simple_movement.d 
+./source/simple_movement.d \
+./source/wifi.d 
 
 OBJS += \
 ./source/detection.o \
@@ -31,7 +33,8 @@ OBJS += \
 ./source/pixy.o \
 ./source/semihost_hardfault.o \
 ./source/servo.o \
-./source/simple_movement.o 
+./source/simple_movement.o \
+./source/wifi.o 
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -46,7 +49,7 @@ source/%.o: ../source/%.c source/subdir.mk
 clean: clean-source
 
 clean-source:
-	-$(RM) ./source/detection.d ./source/detection.o ./source/esc.d ./source/esc.o ./source/hbridge.d ./source/hbridge.o ./source/main.d ./source/main.o ./source/pixy.d ./source/pixy.o ./source/semihost_hardfault.d ./source/semihost_hardfault.o ./source/servo.d ./source/servo.o ./source/simple_movement.d ./source/simple_movement.o
+	-$(RM) ./source/detection.d ./source/detection.o ./source/esc.d ./source/esc.o ./source/hbridge.d ./source/hbridge.o ./source/main.d ./source/main.o ./source/pixy.d ./source/pixy.o ./source/semihost_hardfault.d ./source/semihost_hardfault.o ./source/servo.d ./source/servo.o ./source/simple_movement.d ./source/simple_movement.o ./source/wifi.d ./source/wifi.o
 
 .PHONY: clean-source
 

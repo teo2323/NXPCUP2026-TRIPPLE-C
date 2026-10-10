@@ -28,6 +28,11 @@ void BOARD_InitHardware(void)
 
     BOARD_InitPins();
     BOARD_InitBootClocks();
+
+    /* attach FRO 12M to FLEXCOMM7 (ESP32 UART on P3_2 / P3_3) */
+    CLOCK_SetClkDiv(kCLOCK_DivFlexcom7Clk, 1u);
+    CLOCK_AttachClk(kFRO12M_to_FLEXCOMM7);
+
     BOARD_InitDebugConsole();
 }
 /*${function:end}*/
