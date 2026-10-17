@@ -119,6 +119,7 @@ int main(void)
     int16_t initial_speed = g_engine_enabled ? SPEED_LEFT : 0;
     HbridgeSpeed(&g_hbridge, initial_speed, initial_speed);
     Steer(0 + STEERING_OFFSET);
+    
 
     double   last_steering_angle   = 0.0;
     double   previous_error        = 0.0;   // D term: stores last frame's error

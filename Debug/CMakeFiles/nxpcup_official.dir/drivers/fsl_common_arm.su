@@ -1,4 +1,0 @@
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_common_arm.c:126:6:MSDK_EnableCpuCycleCounter	8	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_common_arm.c:144:10:MSDK_GetCpuCycleCount	4	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_common_arm.c:180:13:DelayLoop	16	static
-E:/Facultate/Practica/NXP2026/NXPCUP2026-TRIPPLE-C/drivers/fsl_common_arm.c:210:6:SDK_DelayAtLeastUs	40	static

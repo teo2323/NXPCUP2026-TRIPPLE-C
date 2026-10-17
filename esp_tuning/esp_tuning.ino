@@ -442,10 +442,15 @@ void setup() {
 
     loadStoredParams();
 
-    // Start Wi-Fi Access Point
+    // Start Wi-Fi Access Point with stability optimizations
     WiFi.mode(WIFI_AP);
-    if (WiFi.softAP(AP_SSID, AP_PASS)) {
-        Serial.printf("[ESP32] AP created! SSID: %s\n", AP_SSID);
+    WiFi.setSleep(false); // Disable modem sleep to prevent beacon dropouts & disconnects
+
+    // Configure AP on Channel 6, SSID broadcasted, max 4 clients
+    if (WiFi.softAP(AP_SSID, AP_PASS, 6, 0, 4)) {
+        // Set TX power to 17dBm to prevent violent current spikes/brownouts while keeping strong signal
+        WiFi.setTxPower(WIFI_POWER_17dBm);
+        Serial.printf("[ESP32] AP created! SSID: %s (Channel 6)\n", AP_SSID);
         Serial.printf("[ESP32] Dashboard: http://%s\n", WiFi.softAPIP().toString().c_str());
     } else {
         Serial.println("[ESP32 ERROR] Failed to start Access Point!");

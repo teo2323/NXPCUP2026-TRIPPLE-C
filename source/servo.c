@@ -1,6 +1,7 @@
 #include "fsl_ctimer.h"
 #include "peripherals.h"
 #include "fsl_debug_console.h"
+#include "Config.h"
 
 void Steer(double angle)
 {
@@ -32,7 +33,7 @@ void TestServo(){
 	volatile int Delay;
 	volatile int SteerStrength;
 	while(1){
-		for(SteerStrength = -50; SteerStrength <=50; SteerStrength++){
+		for(SteerStrength = DEFAULT_STEERING_LIMIT_LEFT; SteerStrength <=DEFAULT_STEERING_LIMIT_RIGHT; SteerStrength++){
 			Delay = 200000;
 			while(Delay){
 				Delay--;
