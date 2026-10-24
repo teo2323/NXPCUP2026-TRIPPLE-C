@@ -45,6 +45,7 @@ extern volatile double g_no_line_max_lost_frames;
 
 // Engine safety & drive state
 extern volatile bool   g_engine_enabled;
+extern volatile bool   g_engine_state_changed;
 
 /* ========================================================================= */
 /* Diagnostic Metrics                                                        */

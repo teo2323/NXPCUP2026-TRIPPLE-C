@@ -15,9 +15,6 @@ void HbridgeInit(Hbridge *h,
                  GPIO_Type *m1DirPort, uint32_t m1DirPin,
                  GPIO_Type *m2DirPort, uint32_t m2DirPin)
 {
-    ctimer_config_t config;
-
-    g_hbridge = *h;
     h->periodChannel    = periodCh;
     h->pwm1Channel      = pwm1Ch;
     h->pwm2Channel      = pwm2Ch;
@@ -26,6 +23,8 @@ void HbridgeInit(Hbridge *h,
     h->motor2DirPort    = m2DirPort;
     h->motor2DirPin     = m2DirPin;
     h->pwmPeripheral    = pwmPeriph;
+
+    g_hbridge = *h;
 }
 
 void HbridgeSpeed(Hbridge *h, int16_t speed1, int16_t speed2)
@@ -37,8 +36,8 @@ void HbridgeSpeed(Hbridge *h, int16_t speed1, int16_t speed2)
     if (speed2 < -100) speed2 = -100;
 
     // Calculate duty cycles (absolute values)
-    uint8_t duty1 = (uint8_t)((speed1 >= 0) ? speed1 : 100 + speed1);
-    uint8_t duty2 = (uint8_t)((speed2 >= 0) ? speed2 : 100 + speed2);
+    uint8_t duty1 = (uint8_t)((speed1 >= 0) ? speed1 : -speed1);
+    uint8_t duty2 = (uint8_t)((speed2 >= 0) ? speed2 : -speed2);
 
     // Set motor 1 direction: 1 for reverse, 0 for forward
     GPIO_PinWrite(h->motor1DirPort, h->motor1DirPin, (speed1 < 0) ? 1U : 0U);    

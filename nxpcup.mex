@@ -743,7 +743,7 @@
                            <setting name="enable_custom_name" value="false"/>
                         </struct>
                      </config_set>
-                     <config_set name="generalCfg" quick_selection="qs_default">
+                     <config_set name="generalCfg">
                         <setting name="lpi2c_mode" value="master"/>
                         <struct name="clock_configuration">
                            <setting name="clockSource" value="LPFLEXCOMMFunctionClock"/>
@@ -755,7 +755,7 @@
                            <setting name="debugEnable" value="false"/>
                            <setting name="ignoreAck" value="false"/>
                            <setting name="pinConfig" value="kLPI2C_2PinOpenDrain"/>
-                           <setting name="baudRate_Hz" value="100000"/>
+                           <setting name="baudRate_Hz" value="400000"/>
                            <struct name="realBaudRateCount"/>
                            <setting name="busIdleTimeout_ns" value="0"/>
                            <setting name="pinLowTimeout_ns" value="0"/>

@@ -92,6 +92,8 @@ uint32_t      pingSequence     = 0;
 uint32_t      lastPongReceived = 0;
 String        lastRxMessage    = "NONE";
 uint32_t      rxPacketCount    = 0;
+uint8_t       liveLineCount    = 0;
+String        lastAckMessage   = "NONE";
 
 /* ========================================================================= */
 /* NVS Persistent Storage                                                    */
@@ -161,7 +163,17 @@ void processSerial2Input() {
                     Serial.printf("\n[ESP32 DUPLEX] Round-trip confirmed! PONG=%lu\n", (unsigned long)lastPongReceived);
                 }
                 else if (rxLine.startsWith("ACK:")) {
+                    lastAckMessage = rxLine.substring(4);
                     Serial.println("\n[ESP32 ACK] Confirmation from FRDM: " + rxLine);
+                }
+                else if (rxLine.startsWith("TELEM:")) {
+                    int linesIdx = rxLine.indexOf("lines=");
+                    if (linesIdx >= 0) {
+                        int pipeIdx = rxLine.indexOf('|', linesIdx);
+                        if (pipeIdx > linesIdx) {
+                            liveLineCount = (uint8_t)rxLine.substring(linesIdx + 6, pipeIdx).toInt();
+                        }
+                    }
                 }
                 rxLine = "";
             }
@@ -239,6 +251,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
     <div class="controls">
       <span id="comm_badge" class="badge">UART: Connecting...</span>
+      <span id="ack_badge" class="badge">FRDM ACK: None</span>
       <span id="engine_status" class="status-pill status-off">STOPPED</span>
       <button class="btn-run"  onclick="setEngine(1)">&#x25B6; RUN</button>
       <button class="btn-stop" onclick="setEngine(0)">&#x23F9; STOP</button>
@@ -247,10 +260,15 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
   </header>
 
+  <div id="track_alert" style="display:none; background:#7c2d12; border:1px solid #ea580c; color:#ffedd5; padding:12px 16px; border-radius:10px; margin-bottom:16px; font-weight:600; font-size:0.92rem;">
+    &#x26A0; <strong>Track Warning:</strong> No track line detected! Please place the robot on the track carefully.
+  </div>
+
   <div id="cards_grid"></div>
 
   <script>
     let paramList = [];
+    let currentLiveLines = 0;
 
     function syncControls(key, value, fromSlider) {
       document.getElementById('val_'  + key).innerText = parseFloat(value).toFixed(2);
@@ -267,6 +285,12 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     function setEngine(state) {
+      if (state === 1 && currentLiveLines === 0) {
+        document.getElementById('track_alert').style.display = 'block';
+        alert("⚠️ No track lines detected!\nPlease place the robot on the track carefully.");
+      } else {
+        document.getElementById('track_alert').style.display = 'none';
+      }
       fetch('/engine?state=' + state).then(r => r.json()).then(d => updateEngineUI(d.engine_enabled === 1));
     }
 
@@ -320,9 +344,21 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
       fetch('/api/status')
         .then(r => r.json())
         .then(d => {
+          currentLiveLines = d.live_lines || 0;
           const badge = document.getElementById('comm_badge');
           if (d.duplex_ok) { badge.innerText = 'UART: FULL-DUPLEX OK'; badge.className = 'badge badge-active'; }
           else             { badge.innerText = 'UART: TX ONLY (WAITING RX)'; badge.className = 'badge'; }
+
+          const ackBadge = document.getElementById('ack_badge');
+          if (d.last_ack && d.last_ack !== 'NONE') {
+            ackBadge.innerText = 'FRDM ACK: ' + d.last_ack;
+            ackBadge.className = 'badge badge-active';
+          }
+
+          if (currentLiveLines > 0) {
+            document.getElementById('track_alert').style.display = 'none';
+          }
+
           updateEngineUI(d.engine_enabled === 1);
         })
         .catch(() => {})
@@ -422,6 +458,8 @@ void handleStatus() {
     json += "\"engine_enabled\":"  + String(engine_enabled ? 1 : 0) + ",";
     json += "\"duplex_ok\":"       + String(duplexOk ? "true" : "false") + ",";
     json += "\"rx_packets\":"      + String(rxPacketCount) + ",";
+    json += "\"live_lines\":"      + String(liveLineCount) + ",";
+    json += "\"last_ack\":\""      + lastAckMessage + "\",";
     json += "\"last_rx\":\""       + lastRxMessage + "\"";
     json += "}";
     server.send(200, "application/json", json);

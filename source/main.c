@@ -12,7 +12,9 @@
 #include "servo.h"
 #include "esc.h"
 #include "detection.h"
+#if WIFI_CONFIG_ENABLED
 #include "wifi.h"
+#endif
 #include <math.h>
 
 #define MAX_VECTORS 10
@@ -112,11 +114,16 @@ int main(void)
     pixy_init(&cam1, LPI2C2, 0x54U, &LP_FLEXCOMM2_RX_Handle, &LP_FLEXCOMM2_TX_Handle);
     pixy_set_led(&cam1, 0, 255, 0); // Green LED indicates active mode
 
+#if WIFI_CONFIG_ENABLED
     /* Initialize WiFi UART (LP_FLEXCOMM7) — enables RX interrupt and ring buffer */
     Wifi_Init();
 
-    /* Initial base drive speed: respect engine-enabled state from ESP32 */
+    /* WiFi mode: respect engine-enabled state from ESP32 (starts stopped) */
     int16_t initial_speed = g_engine_enabled ? SPEED_LEFT : 0;
+#else
+    /* Standalone mode: auto-start immediately on power-on */
+    int16_t initial_speed = 100;
+#endif
     HbridgeSpeed(&g_hbridge, initial_speed, initial_speed);
     Steer(0 + STEERING_OFFSET);
     
@@ -130,8 +137,20 @@ int main(void)
 
     while (1)
     {
+#if WIFI_CONFIG_ENABLED
         Wifi_Process_Rx();
 
+        /* If user pressed RUN/STOP, unlatch motors when engine is armed */
+        if (g_engine_state_changed) {
+            g_engine_state_changed = false;
+            if (g_engine_enabled) {
+                motors_stopped = false;
+                no_line_lost_frames = 0;
+            }
+        }
+#endif
+
+#if WIFI_CONFIG_ENABLED
         /* Periodic Dual-Duplex Communication Test between FRDM and ESP32 (~1 Hz) */
         static uint32_t comm_test_tick = 0U;
         static uint32_t ping_seq = 0U;
@@ -156,14 +175,18 @@ int main(void)
             }
             PRINTF("======================================================\r\n\r\n");
         }
+#endif
 
         if (pixy_get_vectors(&cam1, vectors, MAX_VECTORS, &num_vectors) == kStatus_Success) {
+#if WIFI_CONFIG_ENABLED
             Wifi_Process_Rx();
+#endif
 
             dual_line_detection_result_t det;
             detection_process_dual_lines(vectors, num_vectors, &det);
 
             /* Display line detection status and coordinates */
+            PRINTF("Pixy Vectors: %u | Valid: %u\r\n", (unsigned int)num_vectors, (unsigned int)det.valid_vectors);
             if (det.left_line_present) {
                 PRINTF("Left Line: DETECTED  | Start: (%u, %u), End: (%u, %u)\r\n",
                        det.left_line.vector.x0, det.left_line.vector.y0,
@@ -199,10 +222,19 @@ int main(void)
             }
             else {
                 /* Case: No track lines detected -> check if lost frames exceeded threshold */
+#if WIFI_CONFIG_ENABLED
+                if (g_engine_enabled) {
+                    no_line_lost_frames++;
+                    if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
+                        motors_stopped = true;
+                    }
+                }
+#else
                 no_line_lost_frames++;
                 if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
                     motors_stopped = true;
                 }
+#endif
 
                 /* No vectors detected -> gently decay angle using DECAY_FACTOR */
                 last_steering_angle *= DECAY_FACTOR;
@@ -215,7 +247,11 @@ int main(void)
                 Steer(last_steering_angle + STEERING_OFFSET);
             }
 
+#if WIFI_CONFIG_ENABLED
             if (motors_stopped || !g_engine_enabled) {
+#else
+            if (motors_stopped) {
+#endif
                 /* When no track lines are detected or engine is disabled, stop the motors */
                 HbridgeSpeed(&g_hbridge, 0, 0);
             } else {
@@ -248,6 +284,7 @@ int main(void)
                 HbridgeSpeed(&g_hbridge, current_speed_left, current_speed_right);
             }
 
+#if WIFI_CONFIG_ENABLED
             /* Send Telemetry to ESP32 over UART at ~10 Hz rate (every 6 camera frames at 60FPS) */
             static uint32_t telemetry_tick = 0U;
             if (++telemetry_tick >= 6U)
@@ -289,14 +326,25 @@ int main(void)
 
                 Wifi_SendTelemetry(line_cnt, which_str, num_vectors, 0U, last_steering_angle, lx0, ly0, lx1, ly1, rx0, ry0, rx1, ry1);
             }
+#endif
         }
         else {
             /* Camera read failed: check if lost frames exceeded threshold */
+#if WIFI_CONFIG_ENABLED
+            if (g_engine_enabled) {
+                no_line_lost_frames++;
+                if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
+                    motors_stopped = true;
+                    HbridgeSpeed(&g_hbridge, 0, 0);
+                }
+            }
+#else
             no_line_lost_frames++;
             if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
                 motors_stopped = true;
                 HbridgeSpeed(&g_hbridge, 0, 0);
             }
+#endif
             SDK_DelayAtLeastUs(16000U, SystemCoreClock);
         }
     }

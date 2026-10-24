@@ -14,13 +14,16 @@
  *   FRDM → ESP:  "ACK:NAME_OF_THE_PARAMETER=NEW_VALUE\r\n"
  */
 
+#include "Config.h"
+
+#if WIFI_CONFIG_ENABLED
+
 #include "wifi.h"
 #include "peripherals.h"
 #include "fsl_lpuart.h"
 #include "fsl_debug_console.h"
 #include "hbridge.h"
 #include "servo.h"
-#include "Config.h"
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
@@ -65,6 +68,7 @@ volatile double g_no_line_max_lost_frames   = 5.0;
 
 // Engine safety
 volatile bool   g_engine_enabled            = false;
+volatile bool   g_engine_state_changed      = false;
 
 // Diagnostics
 volatile uint32_t g_wifi_tx_count           = 0U;
@@ -282,6 +286,7 @@ void Wifi_ParseCommand(const char *cmd)
     if (strcmp(key, "EMERGENCY_STOP") == 0)
     {
         g_engine_enabled = false;
+        g_engine_state_changed = true;
         HbridgeSpeed(&g_hbridge, 0, 0);
         Steer(0.0 + (double)STEERING_OFFSET);
         Wifi_SendString("ACK:EMERGENCY_STOP=1\r\n");
@@ -291,6 +296,7 @@ void Wifi_ParseCommand(const char *cmd)
     else if (strcmp(key, "ENGINE_ENABLED") == 0)
     {
         g_engine_enabled = (val > 0.5f);
+        g_engine_state_changed = true;
         if (!g_engine_enabled)
         {
             HbridgeSpeed(&g_hbridge, 0, 0);
@@ -376,3 +382,5 @@ void Wifi_Process_Rx(void)
         }
     }
 }
+
+#endif /* WIFI_CONFIG_ENABLED */
