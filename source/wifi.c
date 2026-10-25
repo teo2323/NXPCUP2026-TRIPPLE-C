@@ -60,6 +60,10 @@ volatile double g_speed_right               = 100.0;
 volatile double g_speed_left                = 100.0;
 volatile double g_corner_brake_coeff        = 1.7;
 volatile double g_diff_speed_coeff          = 0.38;
+volatile double g_consecutive_curve_time_ms = 500.0;
+volatile double g_consecutive_curve_speed   = 70.0;
+volatile double g_min_curve_duration_ms     = 100.0;
+volatile double g_max_single_curve_time_ms  = 450.0;
 
 // Detection thresholds & decay
 volatile double g_vertical_min_slope        = 0.375;
@@ -99,6 +103,10 @@ static const config_param_entry_t g_config_param_table[] = {
     {"SPEED_LEFT",                &g_speed_left,                     0.0,  100.0,  100.0  },
     {"CORNER_BRAKE_COEFF",        &g_corner_brake_coeff,             0.0,    5.0,    1.7  },
     {"DIFF_SPEED_COEFF",          &g_diff_speed_coeff,               0.0,    2.0,    0.38 },
+    {"CONSECUTIVE_CURVE_TIME_MS", &g_consecutive_curve_time_ms,      0.0, 3000.0,  500.0  },
+    {"CONSECUTIVE_CURVE_SPEED",   &g_consecutive_curve_speed,        0.0,  100.0,   70.0  },
+    {"MIN_CURVE_DURATION_MS",     &g_min_curve_duration_ms,          0.0, 1000.0,  100.0  },
+    {"MAX_SINGLE_CURVE_TIME_MS",  &g_max_single_curve_time_ms,     100.0, 5000.0,  450.0  },
     {"VERTICAL_MIN_SLOPE",        &g_vertical_min_slope,             0.1,    3.0,    0.375},
     {"DECAY_FACTOR",              &g_decay_factor,                   0.0,    1.0,    0.5  },
     {"NO_LINE_MAX_LOST_FRAMES",   &g_no_line_max_lost_frames,        1.0,   30.0,    5.0  },

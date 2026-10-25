@@ -8,7 +8,7 @@
 /* Set to true  -> ESP32 controls start/stop + live parameter tuning         */
 /* Set to false -> Robot auto-starts, uses Config.h defaults, no WiFi/UART   */
 /* ========================================================================= */
-#define WIFI_CONFIG_ENABLED  false
+#define WIFI_CONFIG_ENABLED  true
 static const bool wifi_config_enabled = WIFI_CONFIG_ENABLED;
 
 #if WIFI_CONFIG_ENABLED
@@ -59,6 +59,16 @@ static const bool wifi_config_enabled = WIFI_CONFIG_ENABLED;
 //          inner = SPEED - |angle|*CORNER_BRAKE - |angle|*DIFF
 #define DEFAULT_DIFF_SPEED_COEFF            0.4
 
+// Consecutive curves & hairpin protection:
+// - If a new curve is entered within CONSECUTIVE_CURVE_TIME_MS (ms) after exiting a valid curve
+//   (one that lasted at least MIN_CURVE_DURATION_MS), or if curve direction reverses (S-curve),
+//   or if a single curve exceeds MAX_SINGLE_CURVE_TIME_MS (180-deg hairpin), bypass differential
+//   and set both motors to CONSECUTIVE_CURVE_SPEED (%).
+#define DEFAULT_CONSECUTIVE_CURVE_TIME_MS   500.0
+#define DEFAULT_CONSECUTIVE_CURVE_SPEED     70.0
+#define DEFAULT_MIN_CURVE_DURATION_MS       100.0
+#define DEFAULT_MAX_SINGLE_CURVE_TIME_MS    450.0
+
 // Minimum slope (|dy/dx|) for a vector to be classified as vertical
 // Higher = stricter (only nearly-vertical lines pass)
 // 0.375 means dy must be at least 0.375x dx
@@ -108,6 +118,10 @@ static const bool wifi_config_enabled = WIFI_CONFIG_ENABLED;
 // Dynamics
 #define CORNER_BRAKE_COEFF          g_corner_brake_coeff
 #define DIFF_SPEED_COEFF            g_diff_speed_coeff
+#define CONSECUTIVE_CURVE_TIME_MS   ((uint32_t)g_consecutive_curve_time_ms)
+#define CONSECUTIVE_CURVE_SPEED     ((int16_t)g_consecutive_curve_speed)
+#define MIN_CURVE_DURATION_MS       ((uint32_t)g_min_curve_duration_ms)
+#define MAX_SINGLE_CURVE_TIME_MS    ((uint32_t)g_max_single_curve_time_ms)
 
 // Detection
 #define VERTICAL_MIN_SLOPE          g_vertical_min_slope
@@ -146,6 +160,10 @@ static const bool wifi_config_enabled = WIFI_CONFIG_ENABLED;
 // Dynamics
 #define CORNER_BRAKE_COEFF          DEFAULT_CORNER_BRAKE_COEFF
 #define DIFF_SPEED_COEFF            DEFAULT_DIFF_SPEED_COEFF
+#define CONSECUTIVE_CURVE_TIME_MS   ((uint32_t)DEFAULT_CONSECUTIVE_CURVE_TIME_MS)
+#define CONSECUTIVE_CURVE_SPEED     ((int16_t)DEFAULT_CONSECUTIVE_CURVE_SPEED)
+#define MIN_CURVE_DURATION_MS       ((uint32_t)DEFAULT_MIN_CURVE_DURATION_MS)
+#define MAX_SINGLE_CURVE_TIME_MS    ((uint32_t)DEFAULT_MAX_SINGLE_CURVE_TIME_MS)
 
 // Detection
 #define VERTICAL_MIN_SLOPE          DEFAULT_VERTICAL_MIN_SLOPE

@@ -128,12 +128,17 @@ int main(void)
     Steer(0 + STEERING_OFFSET);
     
 
-    double   last_steering_angle   = 0.0;
-    double   previous_error        = 0.0;   // D term: stores last frame's error
-    bool     is_in_curve           = false; // Hysteresis state: true if in curve zone
-    uint8_t  straight_frames       = 0;     // Counter for consecutive frames below exit threshold
-    uint8_t  no_line_lost_frames   = 0;     // Counter for consecutive frames with no detected track lines
-    bool     motors_stopped        = false; // State flag: true when no lines detected for > NO_LINE_MAX_LOST_FRAMES frames
+    double   last_steering_angle    = 0.0;
+    double   previous_error         = 0.0;   // D term: stores last frame's error
+    bool     is_in_curve            = false; // Hysteresis state: true if in curve zone
+    uint8_t  straight_frames        = 0;     // Counter for consecutive frames below exit threshold
+    uint8_t  no_line_lost_frames    = 0;     // Counter for consecutive frames with no detected track lines
+    bool     motors_stopped         = false; // State flag: true when no lines detected for > NO_LINE_MAX_LOST_FRAMES frames
+    bool     is_consecutive_curve   = false; // True when differential is bypassed for consecutive/hairpin curves
+    bool     has_exited_curve       = false; // True after at least one valid curve has been exited
+    uint32_t curve_enter_time_ms    = 0U;    // Timestamp (g_systick_ms) when current curve started
+    uint32_t last_curve_exit_time_ms = 0U;   // Timestamp (g_systick_ms) when last valid curve exited
+    int8_t   curve_sign             = 0;     // +1 for right/positive curve_angle, -1 for left/negative
 
     while (1)
     {
@@ -144,8 +149,11 @@ int main(void)
         if (g_engine_state_changed) {
             g_engine_state_changed = false;
             if (g_engine_enabled) {
-                motors_stopped = false;
-                no_line_lost_frames = 0;
+                motors_stopped       = false;
+                no_line_lost_frames  = 0;
+                has_exited_curve     = false;
+                is_consecutive_curve = false;
+                curve_sign           = 0;
             }
         }
 #endif
@@ -209,6 +217,8 @@ int main(void)
                 no_line_lost_frames   = 0;
                 motors_stopped        = false;
 
+                bool was_in_curve = is_in_curve;
+
                 /* 2-Zone Variable PID steering control with hysteresis */
                 double steer_angle = compute_variable_pid(det.steering_angle,
                                                           det.curve_angle,
@@ -216,6 +226,44 @@ int main(void)
                                                           last_steering_angle,
                                                           &is_in_curve,
                                                           &straight_frames);
+
+                uint32_t now_ms       = g_systick_ms;
+                int8_t   current_sign = (det.curve_angle >= 0.0) ? 1 : -1;
+
+                if (!was_in_curve && is_in_curve) {
+                    /* Transition: Straight -> Curve */
+                    curve_enter_time_ms = now_ms;
+                    curve_sign          = current_sign;
+                    if (has_exited_curve && ((now_ms - last_curve_exit_time_ms) < CONSECUTIVE_CURVE_TIME_MS)) {
+                        is_consecutive_curve = true;
+                    } else {
+                        is_consecutive_curve = false;
+                    }
+                } else if (was_in_curve && !is_in_curve) {
+                    /* Transition: Curve -> Straight (valid line-detected exit) */
+                    if ((now_ms - curve_enter_time_ms) >= MIN_CURVE_DURATION_MS) {
+                        last_curve_exit_time_ms = now_ms;
+                        has_exited_curve        = true;
+                    }
+                    is_consecutive_curve = false;
+                    curve_sign           = 0;
+                } else if (was_in_curve && is_in_curve) {
+                    /* Still in curve: check for S-curve sign reversal or 180-deg hairpin timeout */
+                    uint32_t curve_duration = now_ms - curve_enter_time_ms;
+
+                    if (fabs(det.curve_angle) > CURVE_ENTER_ANGLE_DEG &&
+                        curve_sign != 0 && current_sign != curve_sign) {
+                        /* S-curve / chicane inflection point */
+                        if (curve_duration >= MIN_CURVE_DURATION_MS) {
+                            is_consecutive_curve = true;
+                        }
+                        curve_enter_time_ms = now_ms;
+                        curve_sign          = current_sign;
+                    } else if (!is_consecutive_curve && (curve_duration > MAX_SINGLE_CURVE_TIME_MS)) {
+                        /* Continuous long curve / 180-deg hairpin: prevent stall in second half */
+                        is_consecutive_curve = true;
+                    }
+                }
 
                 Steer(steer_angle + STEERING_OFFSET);
                 last_steering_angle = steer_angle;
@@ -226,23 +274,31 @@ int main(void)
                 if (g_engine_enabled) {
                     no_line_lost_frames++;
                     if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
-                        motors_stopped = true;
+                        motors_stopped       = true;
+                        has_exited_curve     = false;
+                        is_consecutive_curve = false;
+                        curve_sign           = 0;
                     }
                 }
 #else
                 no_line_lost_frames++;
                 if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
-                    motors_stopped = true;
+                    motors_stopped       = true;
+                    has_exited_curve     = false;
+                    is_consecutive_curve = false;
+                    curve_sign           = 0;
                 }
 #endif
 
                 /* No vectors detected -> gently decay angle using DECAY_FACTOR */
                 last_steering_angle *= DECAY_FACTOR;
                 if (fabs(last_steering_angle) < 1.0) {
-                    last_steering_angle = 0.0;
-                    previous_error      = 0.0;
-                    is_in_curve         = false;
-                    straight_frames     = 0;
+                    last_steering_angle  = 0.0;
+                    previous_error       = 0.0;
+                    is_in_curve          = false;
+                    is_consecutive_curve = false;
+                    curve_sign           = 0;
+                    straight_frames      = 0;
                 }
                 Steer(last_steering_angle + STEERING_OFFSET);
             }
@@ -258,22 +314,29 @@ int main(void)
                 int16_t current_speed_left, current_speed_right;
 
                 if (is_in_curve) {
-                    /* Differential drive with corner braking (applied only in curve):
-                     * 1) corner_brake slows BOTH wheels proportionally to turn sharpness
-                     * 2) diff splits inner/outer: outer gets a boost, inner brakes harder
-                     * Result: outer stays ~80-90 in curves, inner drops aggressively */
-                    double abs_angle    = fabs(last_steering_angle);
-                    double corner_brake = abs_angle * CORNER_BRAKE_COEFF;
-                    double diff         = abs_angle * DIFF_SPEED_COEFF;
-
-                    if (last_steering_angle >= 0.0) {
-                        /* Right turn: left is outer, right is inner */
-                        current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake + diff);
-                        current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake - diff);
+                    if (is_consecutive_curve) {
+                        /* Consecutive curve / S-curve / hairpin second half:
+                         * bypass differential and corner braking, set fixed symmetric speed */
+                        current_speed_left  = CONSECUTIVE_CURVE_SPEED;
+                        current_speed_right = CONSECUTIVE_CURVE_SPEED;
                     } else {
-                        /* Left turn: right is outer, left is inner */
-                        current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake - diff);
-                        current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake + diff);
+                        /* Differential drive with corner braking (applied only in normal curve):
+                         * 1) corner_brake slows BOTH wheels proportionally to turn sharpness
+                         * 2) diff splits inner/outer: outer gets a boost, inner brakes harder
+                         * Result: outer stays ~80-90 in curves, inner drops aggressively */
+                        double abs_angle    = fabs(last_steering_angle);
+                        double corner_brake = abs_angle * CORNER_BRAKE_COEFF;
+                        double diff         = abs_angle * DIFF_SPEED_COEFF;
+
+                        if (last_steering_angle >= 0.0) {
+                            /* Right turn: left is outer, right is inner */
+                            current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake + diff);
+                            current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake - diff);
+                        } else {
+                            /* Left turn: right is outer, left is inner */
+                            current_speed_left  = (int16_t)(SPEED_LEFT  - corner_brake - diff);
+                            current_speed_right = (int16_t)(SPEED_RIGHT - corner_brake + diff);
+                        }
                     }
                 } else {
                     /* Straight section: maintain full symmetric base speed with no differential */
@@ -334,14 +397,20 @@ int main(void)
             if (g_engine_enabled) {
                 no_line_lost_frames++;
                 if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
-                    motors_stopped = true;
+                    motors_stopped       = true;
+                    has_exited_curve     = false;
+                    is_consecutive_curve = false;
+                    curve_sign           = 0;
                     HbridgeSpeed(&g_hbridge, 0, 0);
                 }
             }
 #else
             no_line_lost_frames++;
             if (no_line_lost_frames >= NO_LINE_MAX_LOST_FRAMES) {
-                motors_stopped = true;
+                motors_stopped       = true;
+                has_exited_curve     = false;
+                is_consecutive_curve = false;
+                curve_sign           = 0;
                 HbridgeSpeed(&g_hbridge, 0, 0);
             }
 #endif

@@ -37,6 +37,10 @@ extern volatile double g_speed_right;
 extern volatile double g_speed_left;
 extern volatile double g_corner_brake_coeff;
 extern volatile double g_diff_speed_coeff;
+extern volatile double g_consecutive_curve_time_ms;
+extern volatile double g_consecutive_curve_speed;
+extern volatile double g_min_curve_duration_ms;
+extern volatile double g_max_single_curve_time_ms;
 
 // Detection thresholds & decay
 extern volatile double g_vertical_min_slope;

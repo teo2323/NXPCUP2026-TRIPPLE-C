@@ -75,6 +75,10 @@ ParamDef params[] = {
     {"SPEED_LEFT",                 "Left Base Speed (%)",      "Motor & Speed",      0.0f, 100.0f,  1.0f, 100.0f, 100.0f},
     {"CORNER_BRAKE_COEFF",         "Corner Brake Coeff",       "Motor & Speed",      0.0f,   5.0f, 0.05f,   1.7f,   1.7f},
     {"DIFF_SPEED_COEFF",           "Diff Speed Coeff",         "Motor & Speed",      0.0f,   2.0f, 0.01f,  0.38f,  0.38f},
+    {"CONSECUTIVE_CURVE_TIME_MS",  "Consec Curve Time (ms)",   "Motor & Speed",      0.0f,3000.0f, 25.0f, 500.0f, 500.0f},
+    {"CONSECUTIVE_CURVE_SPEED",    "Consec Curve Speed (%)",   "Motor & Speed",      0.0f, 100.0f,  1.0f,  70.0f,  70.0f},
+    {"MIN_CURVE_DURATION_MS",      "Min Curve Duration (ms)",  "Motor & Speed",      0.0f,1000.0f, 10.0f, 100.0f, 100.0f},
+    {"MAX_SINGLE_CURVE_TIME_MS",   "Max Single Curve (ms)",    "Motor & Speed",    100.0f,5000.0f, 25.0f, 450.0f, 450.0f},
 
     // ── Detection ────────────────────────────────────────────────────────────
     {"VERTICAL_MIN_SLOPE",         "Vertical Min Slope",       "Detection",          0.1f,   3.0f,0.025f, 0.375f, 0.375f},
@@ -85,6 +89,10 @@ const size_t NUM_PARAMS = sizeof(params) / sizeof(params[0]);
 
 // Engine state (always starts stopped for safety)
 bool engine_enabled = false;
+
+// Preset configurations in NVS
+const size_t MAX_PRESETS      = 10;
+String       activePresetName = "Default";
 
 // Diagnostics
 unsigned long lastPingTime     = 0;
@@ -105,6 +113,7 @@ void loadStoredParams() {
         snprintf(nvsKey, sizeof(nvsKey), "p_%d", (int)i);
         params[i].currentVal = preferences.getFloat(nvsKey, params[i].defaultVal);
     }
+    activePresetName = preferences.getString("act_preset", "Default");
     engine_enabled = false;  // Always safe-stopped on boot
 }
 
@@ -113,6 +122,49 @@ void saveStoredParam(size_t index) {
     char nvsKey[16];
     snprintf(nvsKey, sizeof(nvsKey), "p_%d", (int)index);
     preferences.putFloat(nvsKey, params[index].currentVal);
+}
+
+void saveAllStoredParams() {
+    for (size_t i = 0; i < NUM_PARAMS; i++) {
+        saveStoredParam(i);
+    }
+    preferences.putString("act_preset", activePresetName);
+}
+
+String escapeJsonString(const String& input) {
+    String out = "";
+    out.reserve(input.length() + 4);
+    for (size_t i = 0; i < input.length(); i++) {
+        char c = input[i];
+        if (c == '\"')      out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else if (c >= 32)   out += c;
+    }
+    return out;
+}
+
+int findPresetSlotByName(const String& name) {
+    for (size_t s = 0; s < MAX_PRESETS; s++) {
+        char nameKey[16];
+        snprintf(nameKey, sizeof(nameKey), "pr_name_%d", (int)s);
+        String storedName = preferences.getString(nameKey, "");
+        if (storedName.length() > 0 && storedName == name) {
+            return (int)s;
+        }
+    }
+    return -1;
+}
+
+int findFreePresetSlot() {
+    for (size_t s = 0; s < MAX_PRESETS; s++) {
+        char nameKey[16];
+        snprintf(nameKey, sizeof(nameKey), "pr_name_%d", (int)s);
+        String storedName = preferences.getString(nameKey, "");
+        if (storedName.length() == 0) {
+            return (int)s;
+        }
+    }
+    return -1;
 }
 
 /* ========================================================================= */
@@ -241,13 +293,21 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     input[type=range] { flex: 1; accent-color: var(--accent); }
     input[type=number] { width: 72px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 6px; font-size: 0.82rem; }
     .btn-set { background: var(--accent); color: #000; border-radius: 6px; padding: 4px 10px; font-size: 0.78rem; font-weight: 700; }
+    .preset-bar { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; }
+    .preset-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .preset-input, .preset-select { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 10px; font-size: 0.84rem; }
+    .preset-input { width: 200px; }
+    .preset-select { min-width: 190px; }
+    .btn-secondary { background: #2d3148; color: var(--text); border: 1px solid #3e4463; }
+    .btn-secondary:hover { border-color: var(--accent); }
+    .btn-warn { background: #9a3412; color: #fff; }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>&#x1F916; NXP CUP Parameter Tuning</h1>
-      <small style="color:var(--muted)">tuning_bootcamp &bull; 20 parameters</small>
+      <small style="color:var(--muted)">tuning_bootcamp &bull; 24 parameters</small>
     </div>
     <div class="controls">
       <span id="comm_badge" class="badge">UART: Connecting...</span>
@@ -260,6 +320,31 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
   </header>
 
+  <div class="preset-bar">
+    <div class="preset-group">
+      <span style="font-size:0.82rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--accent);">&#x1F4BE; Configurations</span>
+      <span id="active_preset_badge" class="badge badge-active">Active: Default</span>
+      <span id="preset_count_badge" class="badge">0 / 10 Saved</span>
+    </div>
+    <div class="preset-group">
+      <input type="text" id="preset_name_input" class="preset-input" maxlength="32" placeholder="Config name (e.g. Fast Track)">
+      <button class="btn-sync" onclick="savePreset()">&#x1F4BE; Save Config</button>
+    </div>
+    <div class="preset-group">
+      <select id="preset_select" class="preset-select" onchange="onPresetSelectChange()">
+        <option value="">-- Saved Configs --</option>
+      </select>
+      <button class="btn-run" onclick="loadSelectedPreset()">&#x1F4C2; Load &amp; Sync</button>
+      <button class="btn-stop" onclick="deleteSelectedPreset()">&#x1F5D1; Delete</button>
+    </div>
+    <div class="preset-group">
+      <button class="btn-warn" onclick="resetFactoryDefaults()">&#x21BA; Factory Defaults</button>
+      <button class="btn-secondary" onclick="exportPresetsJSON()">&#x2B07; Export JSON</button>
+      <button class="btn-secondary" onclick="document.getElementById('import_file_input').click()">&#x2B06; Import JSON</button>
+      <input type="file" id="import_file_input" accept=".json" style="display:none" onchange="importPresetsJSON(event)">
+    </div>
+  </div>
+
   <div id="track_alert" style="display:none; background:#7c2d12; border:1px solid #ea580c; color:#ffedd5; padding:12px 16px; border-radius:10px; margin-bottom:16px; font-weight:600; font-size:0.92rem;">
     &#x26A0; <strong>Track Warning:</strong> No track line detected! Please place the robot on the track carefully.
   </div>
@@ -268,7 +353,16 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
   <script>
     let paramList = [];
+    let presetList = [];
+    let activePreset = 'Default';
     let currentLiveLines = 0;
+
+    function updateActivePresetBadge(name, modified) {
+      activePreset = name || 'Default';
+      const badge = document.getElementById('active_preset_badge');
+      badge.innerText = 'Active: ' + activePreset + (modified ? ' (Modified)' : '');
+      badge.className = modified ? 'badge' : 'badge badge-active';
+    }
 
     function syncControls(key, value, fromSlider) {
       document.getElementById('val_'  + key).innerText = parseFloat(value).toFixed(2);
@@ -280,7 +374,14 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
       const val = document.getElementById('sl_' + key).value;
       fetch('/set?param=' + encodeURIComponent(key) + '&val=' + encodeURIComponent(val))
         .then(r => r.json())
-        .then(d => { if (d.status === 'ok') document.getElementById('val_' + key).innerText = parseFloat(d.val).toFixed(2); })
+        .then(d => {
+          if (d.status === 'ok') {
+            document.getElementById('val_' + key).innerText = parseFloat(d.val).toFixed(2);
+            const p = paramList.find(item => item.key === key);
+            if (p) p.val = parseFloat(d.val);
+            updateActivePresetBadge(activePreset, true);
+          }
+        })
         .catch(e => console.error('setParam error:', e));
     }
 
@@ -306,6 +407,197 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     function saveAllParams() {
       paramList.forEach((p, idx) => { setTimeout(() => setParam(p.key), idx * 120); });
+    }
+
+    function loadPresetsList() {
+      fetch('/api/presets')
+        .then(r => r.json())
+        .then(d => {
+          presetList = d.presets || [];
+          if (d.active_preset) {
+            updateActivePresetBadge(d.active_preset, false);
+          }
+          const sel = document.getElementById('preset_select');
+          const prevVal = sel.value;
+          sel.innerHTML = '<option value="">-- Saved Configs --</option>';
+          presetList.forEach(pr => {
+            const opt = document.createElement('option');
+            opt.value = pr.slot;
+            opt.textContent = `[#${pr.slot + 1}] ${pr.name}`;
+            sel.appendChild(opt);
+          });
+          if (prevVal !== '') sel.value = prevVal;
+          document.getElementById('preset_count_badge').innerText = `${presetList.length} / ${d.max_presets || 10} Saved`;
+        })
+        .catch(e => console.error('Failed to load presets:', e));
+    }
+
+    function onPresetSelectChange() {
+      const sel = document.getElementById('preset_select');
+      if (sel.value === '') return;
+      const slot = parseInt(sel.value, 10);
+      const pr = presetList.find(item => item.slot === slot);
+      if (pr) {
+        document.getElementById('preset_name_input').value = pr.name;
+      }
+    }
+
+    function savePreset() {
+      const nameInput = document.getElementById('preset_name_input');
+      const name = nameInput.value.trim();
+      if (!name) {
+        alert('Please enter a name for the configuration.');
+        return;
+      }
+      const existing = presetList.find(item => item.name === name);
+      if (existing) {
+        if (!confirm(`Configuration "${name}" already exists in Slot #${existing.slot + 1}. Overwrite it?`)) {
+          return;
+        }
+      }
+      fetch('/api/presets/save?name=' + encodeURIComponent(name))
+        .then(r => r.json())
+        .then(d => {
+          if (d.status === 'ok') {
+            updateActivePresetBadge(d.name, false);
+            loadPresetsList();
+            alert(`Saved configuration "${d.name}" (Slot #${d.slot + 1}).`);
+          } else {
+            alert('Save failed: ' + (d.message || 'Unknown error'));
+          }
+        })
+        .catch(e => alert('Save error: ' + e));
+    }
+
+    function loadSelectedPreset() {
+      const sel = document.getElementById('preset_select');
+      if (sel.value === '') {
+        alert('Please select a saved configuration to load.');
+        return;
+      }
+      const slot = parseInt(sel.value, 10);
+      const pr = presetList.find(item => item.slot === slot);
+      const label = pr ? pr.name : ('Slot #' + (slot + 1));
+      fetch('/api/presets/load?slot=' + slot)
+        .then(r => r.json())
+        .then(d => {
+          if (d.status === 'ok') {
+            updateActivePresetBadge(d.name, false);
+            fetch('/api/params').then(r => r.json()).then(renderUI);
+            alert(`Loaded "${label}" into NVS and synced all parameters to FRDM.`);
+          } else {
+            alert('Load failed: ' + (d.message || 'Unknown error'));
+          }
+        })
+        .catch(e => alert('Load error: ' + e));
+    }
+
+    function deleteSelectedPreset() {
+      const sel = document.getElementById('preset_select');
+      if (sel.value === '') {
+        alert('Please select a saved configuration to delete.');
+        return;
+      }
+      const slot = parseInt(sel.value, 10);
+      const pr = presetList.find(item => item.slot === slot);
+      const label = pr ? pr.name : ('Slot #' + (slot + 1));
+      if (!confirm(`Delete configuration "${label}"?`)) {
+        return;
+      }
+      fetch('/api/presets/delete?slot=' + slot)
+        .then(r => r.json())
+        .then(d => {
+          if (d.status === 'ok') {
+            sel.value = '';
+            loadPresetsList();
+          } else {
+            alert('Delete failed: ' + (d.message || 'Unknown error'));
+          }
+        })
+        .catch(e => alert('Delete error: ' + e));
+    }
+
+    function resetFactoryDefaults() {
+      if (!confirm('Reset all 24 parameters to Factory Defaults and sync to FRDM?')) {
+        return;
+      }
+      fetch('/api/presets/reset')
+        .then(r => r.json())
+        .then(d => {
+          if (d.status === 'ok') {
+            updateActivePresetBadge('Factory Defaults', false);
+            fetch('/api/params').then(r => r.json()).then(renderUI);
+          } else {
+            alert('Reset failed: ' + (d.message || 'Unknown error'));
+          }
+        })
+        .catch(e => alert('Reset error: ' + e));
+    }
+
+    function exportPresetsJSON() {
+      const activeMap = {};
+      paramList.forEach(p => { activeMap[p.key] = parseFloat(p.val); });
+      const exportedPresets = presetList.map(pr => {
+        const pMap = {};
+        if (Array.isArray(pr.vals)) {
+          paramList.forEach((p, idx) => {
+            if (idx < pr.vals.length) pMap[p.key] = parseFloat(pr.vals[idx]);
+          });
+        }
+        return { name: pr.name, params: pMap };
+      });
+      const payload = {
+        version: 1,
+        active_preset: activePreset,
+        active_params: activeMap,
+        presets: exportedPresets
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'nxp_tuning_configs.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    async function importPresetsJSON(event) {
+      const file = event.target.files[0];
+      event.target.value = '';
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        let importedCount = 0;
+
+        if (Array.isArray(data.presets)) {
+          for (const pr of data.presets) {
+            if (!pr.name || !pr.params) continue;
+            const valsArr = paramList.map(p => (pr.params[p.key] !== undefined ? pr.params[p.key] : p.val));
+            const url = '/api/presets/save?name=' + encodeURIComponent(pr.name) +
+                        '&vals=' + encodeURIComponent(valsArr.join(',')) + '&apply=0';
+            const resp = await fetch(url).then(r => r.json());
+            if (resp.status === 'ok') importedCount++;
+          }
+        }
+
+        if (data.active_params && typeof data.active_params === 'object') {
+          const valsArr = paramList.map(p => (data.active_params[p.key] !== undefined ? data.active_params[p.key] : p.val));
+          const presetName = data.active_preset || 'Imported';
+          const url = '/api/presets/save?name=' + encodeURIComponent(presetName) +
+                      '&vals=' + encodeURIComponent(valsArr.join(',')) + '&apply=1';
+          await fetch(url);
+        }
+
+        loadPresetsList();
+        const freshParams = await fetch('/api/params').then(r => r.json());
+        renderUI(freshParams);
+        alert(`Imported JSON successfully (${importedCount} preset(s) saved to NVS and active parameters synced).`);
+      } catch (e) {
+        alert('Invalid JSON configuration file: ' + e.message);
+      }
     }
 
     function renderUI(data) {
@@ -367,6 +659,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     window.onload = function() {
       fetch('/api/params').then(r => r.json()).then(renderUI).catch(e => console.error('Failed to load params:', e));
+      loadPresetsList();
       pollStatus();
     };
   </script>
@@ -386,6 +679,7 @@ void handleGetParams() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     String json = "{\"engine_enabled\":";
     json += String(engine_enabled ? 1 : 0);
+    json += ",\"active_preset\":\"" + escapeJsonString(activePresetName) + "\"";
     json += ",\"params\":[";
     for (size_t i = 0; i < NUM_PARAMS; i++) {
         if (i > 0) json += ",";
@@ -415,6 +709,8 @@ void handleSetParam() {
     int foundIdx = -1;
     for (size_t i = 0; i < NUM_PARAMS; i++) {
         if (paramName == params[i].key) {
+            if (val < params[i].minVal) val = params[i].minVal;
+            if (val > params[i].maxVal) val = params[i].maxVal;
             params[i].currentVal = val;
             foundIdx = (int)i;
             break;
@@ -429,6 +725,190 @@ void handleSetParam() {
     } else {
         server.send(404, "application/json", "{\"status\":\"error\",\"message\":\"Unknown parameter\"}");
     }
+}
+
+void handleGetPresets() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    String json = "{\"active_preset\":\"" + escapeJsonString(activePresetName) + "\",";
+    json += "\"max_presets\":" + String(MAX_PRESETS) + ",";
+    json += "\"presets\":[";
+    bool first = true;
+    for (size_t s = 0; s < MAX_PRESETS; s++) {
+        char nameKey[16], valKey[16];
+        snprintf(nameKey, sizeof(nameKey), "pr_name_%d", (int)s);
+        snprintf(valKey,  sizeof(valKey),  "pr_vals_%d", (int)s);
+        String name = preferences.getString(nameKey, "");
+        if (name.length() == 0) continue;
+
+        float vals[NUM_PARAMS];
+        size_t len = preferences.getBytes(valKey, vals, sizeof(vals));
+        if (len != sizeof(vals)) {
+            for (size_t i = 0; i < NUM_PARAMS; i++) vals[i] = params[i].defaultVal;
+        }
+
+        if (!first) json += ",";
+        first = false;
+        json += "{\"slot\":" + String(s) + ",\"name\":\"" + escapeJsonString(name) + "\",\"vals\":[";
+        for (size_t i = 0; i < NUM_PARAMS; i++) {
+            if (i > 0) json += ",";
+            json += String(vals[i], 4);
+        }
+        json += "]}";
+    }
+    json += "]}";
+    server.send(200, "application/json", json);
+}
+
+void handleSavePreset() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    if (!server.hasArg("name")) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing preset name\"}");
+        return;
+    }
+    String name = server.arg("name");
+    name.trim();
+    if (name.length() == 0 || name.length() > 32) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Name must be 1..32 characters\"}");
+        return;
+    }
+
+    int slot = findPresetSlotByName(name);
+    if (slot < 0) {
+        slot = findFreePresetSlot();
+    }
+    if (slot < 0) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"All 10 preset slots are full. Delete one first.\"}");
+        return;
+    }
+
+    float vals[NUM_PARAMS];
+    bool applyLive = (!server.hasArg("apply") || server.arg("apply").toInt() != 0);
+
+    if (server.hasArg("vals")) {
+        /* Parse comma-separated float values (used by JSON import) */
+        String valsStr = server.arg("vals");
+        int startIdx = 0;
+        for (size_t i = 0; i < NUM_PARAMS; i++) {
+            int commaIdx = valsStr.indexOf(',', startIdx);
+            String token = (commaIdx >= 0) ? valsStr.substring(startIdx, commaIdx) : valsStr.substring(startIdx);
+            float v = (token.length() > 0) ? token.toFloat() : params[i].currentVal;
+            if (v < params[i].minVal) v = params[i].minVal;
+            if (v > params[i].maxVal) v = params[i].maxVal;
+            vals[i] = v;
+            if (commaIdx >= 0) startIdx = commaIdx + 1;
+            else               startIdx = valsStr.length();
+        }
+        if (applyLive) {
+            for (size_t i = 0; i < NUM_PARAMS; i++) params[i].currentVal = vals[i];
+        }
+    } else {
+        for (size_t i = 0; i < NUM_PARAMS; i++) {
+            vals[i] = params[i].currentVal;
+        }
+    }
+
+    char nameKey[16], valKey[16];
+    snprintf(nameKey, sizeof(nameKey), "pr_name_%d", slot);
+    snprintf(valKey,  sizeof(valKey),  "pr_vals_%d", slot);
+
+    preferences.putString(nameKey, name);
+    preferences.putBytes(valKey, vals, sizeof(vals));
+
+    if (applyLive) {
+        activePresetName = name;
+        saveAllStoredParams();
+        if (server.hasArg("vals")) {
+            engine_enabled = false;
+            syncAllParamsToFRDM();
+        }
+    }
+
+    Serial.printf("[ESP32 NVS] Saved preset '%s' in slot %d\n", name.c_str(), slot);
+    server.send(200, "application/json",
+                "{\"status\":\"ok\",\"slot\":" + String(slot) + ",\"name\":\"" + escapeJsonString(name) + "\"}");
+}
+
+void handleLoadPreset() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    if (!server.hasArg("slot")) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing slot\"}");
+        return;
+    }
+    int slot = server.arg("slot").toInt();
+    if (slot < 0 || slot >= (int)MAX_PRESETS) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid slot index\"}");
+        return;
+    }
+
+    char nameKey[16], valKey[16];
+    snprintf(nameKey, sizeof(nameKey), "pr_name_%d", slot);
+    snprintf(valKey,  sizeof(valKey),  "pr_vals_%d", slot);
+
+    String name = preferences.getString(nameKey, "");
+    if (name.length() == 0) {
+        server.send(404, "application/json", "{\"status\":\"error\",\"message\":\"Selected slot is empty\"}");
+        return;
+    }
+
+    float vals[NUM_PARAMS];
+    size_t len = preferences.getBytes(valKey, vals, sizeof(vals));
+    if (len != sizeof(vals)) {
+        server.send(500, "application/json", "{\"status\":\"error\",\"message\":\"Stored preset size mismatch\"}");
+        return;
+    }
+
+    for (size_t i = 0; i < NUM_PARAMS; i++) {
+        float v = vals[i];
+        if (v < params[i].minVal) v = params[i].minVal;
+        if (v > params[i].maxVal) v = params[i].maxVal;
+        params[i].currentVal = v;
+    }
+
+    activePresetName = name;
+    engine_enabled   = false;
+    saveAllStoredParams();
+    syncAllParamsToFRDM();
+
+    Serial.printf("[ESP32 NVS] Loaded preset '%s' from slot %d and synced to FRDM\n", name.c_str(), slot);
+    server.send(200, "application/json",
+                "{\"status\":\"ok\",\"slot\":" + String(slot) + ",\"name\":\"" + escapeJsonString(name) + "\"}");
+}
+
+void handleDeletePreset() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    if (!server.hasArg("slot")) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing slot\"}");
+        return;
+    }
+    int slot = server.arg("slot").toInt();
+    if (slot < 0 || slot >= (int)MAX_PRESETS) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid slot index\"}");
+        return;
+    }
+
+    char nameKey[16], valKey[16];
+    snprintf(nameKey, sizeof(nameKey), "pr_name_%d", slot);
+    snprintf(valKey,  sizeof(valKey),  "pr_vals_%d", slot);
+
+    preferences.remove(nameKey);
+    preferences.remove(valKey);
+
+    Serial.printf("[ESP32 NVS] Deleted preset in slot %d\n", slot);
+    server.send(200, "application/json", "{\"status\":\"ok\",\"slot\":" + String(slot) + "}");
+}
+
+void handleResetDefaults() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    for (size_t i = 0; i < NUM_PARAMS; i++) {
+        params[i].currentVal = params[i].defaultVal;
+    }
+    activePresetName = "Factory Defaults";
+    engine_enabled   = false;
+    saveAllStoredParams();
+    syncAllParamsToFRDM();
+
+    Serial.println("[ESP32 NVS] Reset all parameters to Factory Defaults and synced to FRDM");
+    server.send(200, "application/json", "{\"status\":\"ok\",\"active_preset\":\"Factory Defaults\"}");
 }
 
 void handleEngine() {
@@ -475,7 +955,7 @@ void setup() {
 
     Serial.println("\n==================================================");
     Serial.println("   NXP CUP - ESP32 Parameter Tuning Server");
-    Serial.println("   Branch: tuning_bootcamp | 20 parameters");
+    Serial.println("   Branch: consecutive_curves | 24 parameters");
     Serial.println("==================================================");
 
     loadStoredParams();
@@ -501,12 +981,17 @@ void setup() {
     }
 
     // Configure HTTP routes
-    server.on("/",           handleRoot);
-    server.on("/api/params", handleGetParams);
-    server.on("/api/status", handleStatus);
-    server.on("/set",        handleSetParam);
-    server.on("/engine",     handleEngine);
-    server.on("/estop",      handleEStop);
+    server.on("/",                   handleRoot);
+    server.on("/api/params",         handleGetParams);
+    server.on("/api/status",         handleStatus);
+    server.on("/api/presets",        handleGetPresets);
+    server.on("/api/presets/save",   handleSavePreset);
+    server.on("/api/presets/load",   handleLoadPreset);
+    server.on("/api/presets/delete", handleDeletePreset);
+    server.on("/api/presets/reset",  handleResetDefaults);
+    server.on("/set",                handleSetParam);
+    server.on("/engine",             handleEngine);
+    server.on("/estop",              handleEStop);
 
     server.begin();
     Serial.println("[ESP32] HTTP server running on port 80.\n");
