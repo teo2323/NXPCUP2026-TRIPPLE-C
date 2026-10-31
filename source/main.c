@@ -168,20 +168,20 @@ int main(void)
             ping_seq++;
             Wifi_SendPing(ping_seq);
 
-            PRINTF("\r\n======================================================\r\n");
-            PRINTF(" [DUAL-DUPLEX COMM TEST] FRDM <-> ESP32 (LPUART7 @ 115200)\r\n");
-            PRINTF("  FRDM TX -> ESP32: %lu packets sent (Sent PING #%lu)\r\n",
-                   (unsigned long)g_wifi_tx_count, (unsigned long)ping_seq);
-            PRINTF("  FRDM RX <- ESP32: %lu packets received\r\n",
-                   (unsigned long)g_wifi_rx_count);
-            if (g_wifi_rx_count > 0U) {
-                PRINTF("  >>> STATUS: [FULL-DUPLEX ACTIVE - BIDIRECTIONAL OK] <<<\r\n");
-                PRINTF("  Last Msg from ESP32: \"%s\"\r\n", g_wifi_last_rx_cmd);
-            } else {
-                PRINTF("  >>> STATUS: [WAITING FOR ESP32 RX - TX ONLY] <<<\r\n");
-                PRINTF("  Check: ESP32 TX (GPIO17) -> FRDM RX (P3_2), Shared GND\r\n");
-            }
-            PRINTF("======================================================\r\n\r\n");
+            // PRINTF("\r\n======================================================\r\n");
+            // PRINTF(" [DUAL-DUPLEX COMM TEST] FRDM <-> ESP32 (LPUART7 @ 115200)\r\n");
+            // PRINTF("  FRDM TX -> ESP32: %lu packets sent (Sent PING #%lu)\r\n",
+            //        (unsigned long)g_wifi_tx_count, (unsigned long)ping_seq);
+            // PRINTF("  FRDM RX <- ESP32: %lu packets received\r\n",
+            //        (unsigned long)g_wifi_rx_count);
+            // if (g_wifi_rx_count > 0U) {
+            //     PRINTF("  >>> STATUS: [FULL-DUPLEX ACTIVE - BIDIRECTIONAL OK] <<<\r\n");
+            //     PRINTF("  Last Msg from ESP32: \"%s\"\r\n", g_wifi_last_rx_cmd);
+            // } else {
+            //     PRINTF("  >>> STATUS: [WAITING FOR ESP32 RX - TX ONLY] <<<\r\n");
+            //     PRINTF("  Check: ESP32 TX (GPIO17) -> FRDM RX (P3_2), Shared GND\r\n");
+            // }
+            // PRINTF("======================================================\r\n\r\n");
         }
 #endif
 
@@ -194,22 +194,22 @@ int main(void)
             detection_process_dual_lines(vectors, num_vectors, &det);
 
             /* Display line detection status and coordinates */
-            PRINTF("Pixy Vectors: %u | Valid: %u\r\n", (unsigned int)num_vectors, (unsigned int)det.valid_vectors);
-            if (det.left_line_present) {
-                PRINTF("Left Line: DETECTED  | Start: (%u, %u), End: (%u, %u)\r\n",
-                       det.left_line.vector.x0, det.left_line.vector.y0,
-                       det.left_line.vector.x1, det.left_line.vector.y1);
-            } else {
-                PRINTF("Left Line: NOT DETECTED\r\n");
-            }
-
-            if (det.right_line_present) {
-                PRINTF("Right Line: DETECTED | Start: (%u, %u), End: (%u, %u)\r\n",
-                       det.right_line.vector.x0, det.right_line.vector.y0,
-                       det.right_line.vector.x1, det.right_line.vector.y1);
-            } else {
-                PRINTF("Right Line: NOT DETECTED\r\n");
-            }
+            // PRINTF("Pixy Vectors: %u | Valid: %u\r\n", (unsigned int)num_vectors, (unsigned int)det.valid_vectors);
+            // if (det.left_line_present) {
+            //     PRINTF("Left Line: DETECTED  | Start: (%u, %u), End: (%u, %u)\r\n",
+            //            det.left_line.vector.x0, det.left_line.vector.y0,
+            //            det.left_line.vector.x1, det.left_line.vector.y1);
+            // } else {
+            //     PRINTF("Left Line: NOT DETECTED\r\n");
+            // }
+            //
+            // if (det.right_line_present) {
+            //     PRINTF("Right Line: DETECTED | Start: (%u, %u), End: (%u, %u)\r\n",
+            //            det.right_line.vector.x0, det.right_line.vector.y0,
+            //            det.right_line.vector.x1, det.right_line.vector.y1);
+            // } else {
+            //     PRINTF("Right Line: NOT DETECTED\r\n");
+            // }
 
             bool lines_detected = (det.valid_vectors > 0 && (det.left_line_present || det.right_line_present));
 

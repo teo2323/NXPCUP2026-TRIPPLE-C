@@ -278,13 +278,13 @@ void Wifi_ParseCommand(const char *cmd)
         char resp[32];
         snprintf(resp, sizeof(resp), "PONG=%d\r\n", (int)val);
         Wifi_SendString(resp);
-        PRINTF("[FRDM-UART] Replied PONG=%d to ESP32\r\n", (int)val);
+        // PRINTF("[FRDM-UART] Replied PONG=%d to ESP32\r\n", (int)val);
         return;
     }
     else if (strcmp(key, "PONG") == 0)
     {
         g_wifi_last_pong_seq = (uint32_t)val;
-        PRINTF("[FRDM-UART] RX PONG=%d from ESP32 (Round-trip OK!)\r\n", (int)val);
+        // PRINTF("[FRDM-UART] RX PONG=%d from ESP32 (Round-trip OK!)\r\n", (int)val);
         return;
     }
 
@@ -298,7 +298,7 @@ void Wifi_ParseCommand(const char *cmd)
         HbridgeSpeed(&g_hbridge, 0, 0);
         Steer(0.0 + (double)STEERING_OFFSET);
         Wifi_SendString("ACK:EMERGENCY_STOP=1\r\n");
-        PRINTF("\r\n[FRDM-UART] >>> EMERGENCY STOP ACTIVATED! Motors halted, steering centered <<<\r\n\r\n");
+        // PRINTF("\r\n[FRDM-UART] >>> EMERGENCY STOP ACTIVATED! Motors halted, steering centered <<<\r\n\r\n");
         return;
     }
     else if (strcmp(key, "ENGINE_ENABLED") == 0)
@@ -312,7 +312,7 @@ void Wifi_ParseCommand(const char *cmd)
         char ack[64];
         snprintf(ack, sizeof(ack), "ACK:ENGINE_ENABLED=%d\r\n", g_engine_enabled ? 1 : 0);
         Wifi_SendString(ack);
-        PRINTF("[FRDM-UART] Engine state changed: %s\r\n", g_engine_enabled ? "RUNNING" : "STOPPED");
+        // PRINTF("[FRDM-UART] Engine state changed: %s\r\n", g_engine_enabled ? "RUNNING" : "STOPPED");
         return;
     }
 
@@ -334,10 +334,10 @@ void Wifi_ParseCommand(const char *cmd)
             snprintf(ack, sizeof(ack), "ACK:%s=%.4f\r\n", g_config_param_table[i].name, clamped);
             Wifi_SendString(ack);
 
-            PRINTF("[FRDM-UART] Parameter updated: %s = %.4f (range [%.2f, %.2f])\r\n",
-                   g_config_param_table[i].name, clamped,
-                   g_config_param_table[i].min_val,
-                   g_config_param_table[i].max_val);
+            // PRINTF("[FRDM-UART] Parameter updated: %s = %.4f (range [%.2f, %.2f])\r\n",
+            //        g_config_param_table[i].name, clamped,
+            //        g_config_param_table[i].min_val,
+            //        g_config_param_table[i].max_val);
             found = true;
             break;
         }
@@ -345,7 +345,7 @@ void Wifi_ParseCommand(const char *cmd)
 
     if (!found)
     {
-        PRINTF("[FRDM-UART] Warning: Unrecognized parameter key: \"%s\"\r\n", key);
+        // PRINTF("[FRDM-UART] Warning: Unrecognized parameter key: \"%s\"\r\n", key);
         char err[64];
         snprintf(err, sizeof(err), "ERR:UNKNOWN_PARAM=%s\r\n", key);
         Wifi_SendString(err);
@@ -376,8 +376,8 @@ void Wifi_Process_Rx(void)
                 strncpy(g_wifi_last_rx_cmd, packetBuffer, sizeof(g_wifi_last_rx_cmd) - 1U);
                 g_wifi_last_rx_cmd[sizeof(g_wifi_last_rx_cmd) - 1U] = '\0';
 
-                PRINTF("[FRDM-UART] RX Packet #%lu: \"%s\"\r\n",
-                       (unsigned long)g_wifi_rx_packet_count, packetBuffer);
+                // PRINTF("[FRDM-UART] RX Packet #%lu: \"%s\"\r\n",
+                //        (unsigned long)g_wifi_rx_packet_count, packetBuffer);
 
                 Wifi_ParseCommand(packetBuffer);
 

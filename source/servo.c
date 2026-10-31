@@ -35,7 +35,7 @@ void TestServo(void)
             while (Delay) {
                 Delay--;
             }
-            PRINTF("Steer: %d\n", SteerStrength);
+            // PRINTF("Steer: %d\n", SteerStrength);
             Steer((double)SteerStrength);
         }
     }

@@ -277,9 +277,9 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
     }
     else if (!has_left && has_right) {
         /* CASE 2: Left line MISSING -> virtual center = right_x - half_track_width */
-        result->track_center_x = right->bottom_x - half_track_width;
+        result->track_center_x = right->bottom_x - 27.5; //half_track_width
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
-        result->track_width    = 2.0 * half_track_width;
+        result->track_width    = 2.0 * 27.5;
         result->avg_slope      = right->inverse_slope;
         /* Right line tilts inward (negative) on straights; add offset to cancel perspective convergence */
         result->curve_angle    = right->angle_deg + PERSPECTIVE_ANGLE_OFFSET;
@@ -288,9 +288,9 @@ static void detection_calculate_dual_line_steering(const line_track_t *left,
     }
     else if (has_left && !has_right) {
         /* CASE 3: Right line MISSING -> virtual center = left_x + half_track_width */
-        result->track_center_x = left->bottom_x + half_track_width;
+        result->track_center_x = left->bottom_x + 27.5; //old version: half_track_width
         result->center_offset  = result->track_center_x - PIXY_FRAME_CENTER_X;
-        result->track_width    = 2.0 * half_track_width;
+        result->track_width    = 2.0 * 27.5;
         result->avg_slope      = left->inverse_slope;
         /* Left line tilts inward (positive) on straights; subtract offset to cancel perspective convergence */
         result->curve_angle    = left->angle_deg - PERSPECTIVE_ANGLE_OFFSET;
